@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: one-estate-coffee
+    runtime: node
+    buildCommand: npm install && cd client && npm install && npm run build
+    startCommand: node server/src/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_ACCESS_EXPIRES
+        value: 15m
+      - key: JWT_REFRESH_EXPIRES
+        value: 7d
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false

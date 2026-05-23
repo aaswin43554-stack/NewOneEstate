@@ -1,0 +1,33 @@
+{
+  "name": "one-estate-coffee",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "client",
+    "server",
+    "db"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,client -c bgBlue,bgGreen \"npm run dev --workspace=server\" \"npm run dev --workspace=client\"",
+    "dev:client": "npm run dev --workspace=client",
+    "dev:server": "npm run dev --workspace=server",
+    "migrate": "npm run migrate --workspace=db",
+    "install:all": "npm install",
+    "build": "npm install && (npm run migrate --workspace=db || true) && cd client && npm install --include=dev && npm run build",
+    "start": "node server/src/index.js"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-validator": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.11.5",
+    "qrcode": "^1.5.4",
+    "ws": "^8.20.1"
+  }
+}
