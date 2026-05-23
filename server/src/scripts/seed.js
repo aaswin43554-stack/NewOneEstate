@@ -5,7 +5,7 @@
 const bcrypt = require('bcryptjs');
 const pool   = require('../config/db');
 
-const DEMO_EMAIL    = 'admin@oneestate.com';
+const DEMO_EMAIL    = 'admin@oneestatecoffee.com';
 const DEMO_PASSWORD = 'Admin123!';
 const DEMO_NAME     = 'Admin';
 const TENANT_NAME   = 'One Estate Coffee';
