@@ -145,8 +145,8 @@ router.post(
         user: { id: user.id, tenant_id: user.tenant_id, name: user.name, email: user.email, role: user.role, timezone: user.timezone },
       });
     } catch (err) {
-      console.error('Login error:', err);
-      return res.status(500).json({ error: 'Login failed' });
+      console.error('Login error full:', err.message, '| DB URL set:', !!process.env.DATABASE_URL);
+      return res.status(500).json({ error: 'Login failed', detail: err.message });
     }
   }
 );
