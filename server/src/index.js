@@ -1,5 +1,8 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
 
+// Force IPv4 — Render's network cannot reach Supabase over IPv6
+require('dns').setDefaultResultOrder('ipv4first');
+
 // Prevent ANY unhandled error from crashing the server
 process.on('unhandledRejection', (reason) => {
   console.error('[server] unhandledRejection:', reason?.message || reason);
