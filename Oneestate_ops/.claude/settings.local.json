@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\aaswi\\\\OneDrive\\\\Desktop\\\\Work\\\\Oneestate\" -Recurse -Depth 2)",
+      "Bash(Select-Object FullName, PSIsContainer)",
+      "Bash(Sort-Object FullName)",
+      "Bash(npm install *)",
+      "Bash(node migrate.js)",
+      "Bash(node --check src/index.js)",
+      "Bash(node --check src/routes/roastSessions.js)",
+      "Bash(node --check src/routes/allocations.js)",
+      "Bash(node --check src/routes/profiles.js)",
+      "Bash(node --check src/routes/cupping.js)",
+      "Read(//c/Users/aaswi/OneDrive/Desktop/Work/Oneestate/server/**)",
+      "Bash(node src/index.js)",
+      "Bash(echo \"Server PID: $!\")",
+      "Bash(node *)",
+      "Bash(powershell *)",
+      "Bash(ping -n 5 127.0.0.1)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\aaswi\\\\OneDrive\\\\Desktop\\\\Work\\\\Oneestate_ops\\\\Oneestate_ops\" -Force)",
+      "Bash(xargs wc -l)",
+      "mcp__plugin_supabase_supabase__list_projects",
+      "mcp__plugin_supabase_supabase__execute_sql",
+      "mcp__plugin_supabase_supabase__get_project_url",
+      "mcp__plugin_supabase_supabase__apply_migration",
+      "PowerShell(Get-NetTCPConnection *)",
+      "PowerShell(Test-NetConnection *)"
+    ]
+  }
+}
