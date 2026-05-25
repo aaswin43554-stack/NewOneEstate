@@ -2,39 +2,30 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../../components/Layout';
 import { api } from '../../lib/api';
+import { Button, StatusBadge, ProcessBadge, PanelField } from '../../components/ui';
 
 const TZ = 'Asia/Vientiane';
 
-const STATUS_COLORS = {
-  prospect:      'bg-gray-100 text-gray-600',
-  active_buyer:  'bg-green-100 text-green-700',
-  private_list:  'bg-purple-100 text-purple-700',
-  trade_account: 'bg-blue-100 text-blue-700',
-};
-const REQUEST_STATUS_COLORS = {
-  pending:   'bg-gray-100 text-gray-700',
-  confirmed: 'bg-green-100 text-green-700',
-  fulfilled: 'bg-blue-100 text-blue-700',
-};
-const SEGMENT_COLORS = {
-  Laos:      'bg-coffee-100 text-coffee-700',
-  Thailand:  'bg-amber-100 text-amber-700',
-  Malaysia:  'bg-green-100 text-green-700',
-  Singapore: 'bg-blue-100 text-blue-700',
-  Other:     'bg-gray-100 text-gray-600',
-};
-const PROCESS_COLORS = {
-  Washed:    'bg-blue-100 text-blue-700',
-  Honey:     'bg-amber-100 text-amber-700',
-  Natural:   'bg-green-100 text-green-700',
-  Anaerobic: 'bg-purple-100 text-purple-700',
+const STATUS_MAP = {
+  prospect:      { status: 'draft',        label: 'Prospect' },
+  active_buyer:  { status: 'active',       label: 'Active Buyer' },
+  private_list:  { status: 'published',    label: 'Private List' },
+  trade_account: { status: 'under_review', label: 'Trade Account' },
 };
 
-function statusLabel(s) {
-  return (
-    { prospect: 'Prospect', active_buyer: 'Active Buyer', private_list: 'Private List', trade_account: 'Trade Account' }[s] || s
-  );
-}
+const SEGMENT_COLORS = {
+  Laos:      { bg: '#F2EAE0', color: '#8B6A47' },
+  Thailand:  { bg: '#FAEEDA', color: '#BA7517' },
+  Malaysia:  { bg: '#EAF3DE', color: '#3B6D11' },
+  Singapore: { bg: '#E6F1FB', color: '#185FA5' },
+  Other:     { bg: '#F1EFE8', color: '#888780' },
+};
+
+const REQUEST_STATUS_META = {
+  pending:   { cls: 'badge-draft',        label: 'Pending' },
+  confirmed: { cls: 'badge-published',    label: 'Confirmed' },
+  fulfilled: { cls: 'badge-under-review', label: 'Fulfilled' },
+};
 
 function fmtRate(r) {
   if (r == null) return '—';
@@ -51,16 +42,15 @@ export default function ContactDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const [contact, setContact] = useState(null);
-  const [history, setHistory] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  const [linkModal, setLinkModal] = useState(false);
+  const [contact,     setContact]     = useState(null);
+  const [history,     setHistory]     = useState([]);
+  const [loading,     setLoading]     = useState(true);
+  const [linkModal,   setLinkModal]   = useState(false);
   const [allRequests, setAllRequests] = useState([]);
-  const [reqSearch, setReqSearch] = useState('');
+  const [reqSearch,   setReqSearch]   = useState('');
   const [selectedReqId, setSelectedReqId] = useState('');
-  const [linkSaving, setLinkSaving] = useState(false);
-  const [linkError, setLinkError] = useState('');
+  const [linkSaving,  setLinkSaving]  = useState(false);
+  const [linkError,   setLinkError]   = useState('');
 
   const load = useCallback(() => {
     setLoading(true);
@@ -111,107 +101,103 @@ export default function ContactDetail() {
     );
   });
 
-  if (loading) return <Layout><div className="p-6 text-coffee-600">Loading…</div></Layout>;
-  if (!contact) return <Layout><div className="p-6 text-red-600">Contact not found.</div></Layout>;
+  if (loading) return <Layout><div className="px-6 py-6 text-sm text-coffee-400">Loading…</div></Layout>;
+  if (!contact) return <Layout><div className="px-6 py-6 text-sm" style={{ color: '#A32D2D' }}>Contact not found.</div></Layout>;
+
+  const badgeMeta = STATUS_MAP[contact.status] || STATUS_MAP.prospect;
+  const segStyle  = SEGMENT_COLORS[contact.market_segment] || SEGMENT_COLORS.Other;
 
   return (
     <Layout>
-      <div className="max-w-3xl mx-auto p-4 space-y-5">
+      <div className="max-w-3xl mx-auto px-6 py-6 space-y-5">
         {/* Header */}
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-bold text-coffee-900">{contact.name}</h1>
-          <span className={`text-xs px-2 py-1 rounded font-semibold ${STATUS_COLORS[contact.status] || ''}`}>
-            {statusLabel(contact.status)}
-          </span>
-          <span className={`text-xs px-2 py-1 rounded font-semibold ${SEGMENT_COLORS[contact.market_segment] || 'bg-gray-100 text-gray-600'}`}>
+          <h1 className="text-xl text-coffee-900" style={{ fontWeight: 500 }}>{contact.name}</h1>
+          <StatusBadge status={badgeMeta.status} label={badgeMeta.label} />
+          <span
+            className="text-xs px-2 py-0.5 rounded-full"
+            style={{ background: segStyle.bg, color: segStyle.color }}
+          >
             {contact.market_segment}
           </span>
         </div>
 
-        {/* Contact info */}
-        <div className="bg-white border border-coffee-200 rounded-lg p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-coffee-800">Contact Info</h2>
-            <button
-              onClick={() => navigate(`/contacts/${id}/edit`)}
-              className="px-3 py-1.5 border border-coffee-300 text-coffee-700 rounded text-xs font-semibold hover:bg-coffee-50"
-            >
+        {/* Contact Info */}
+        <div className="bg-white border border-coffee-200 rounded-xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-xs text-coffee-400 uppercase tracking-wide">Contact Info</p>
+            <Button variant="ghost" size="sm" onClick={() => navigate(`/contacts/${id}/edit`)}>
               Edit
-            </button>
+            </Button>
           </div>
-          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
-            <div>
-              <dt className="text-xs text-coffee-500 mb-0.5">Primary Contact Method</dt>
-              <dd className="text-coffee-900 font-medium">{contact.primary_contact_method || '—'}</dd>
-            </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <PanelField label="Primary Contact Method" value={contact.primary_contact_method} />
             {contact.preferred_channel && (
-              <div>
-                <dt className="text-xs text-coffee-500 mb-0.5">Preferred Channel</dt>
-                <dd className="text-coffee-900">{contact.preferred_channel}</dd>
-              </div>
+              <PanelField label="Preferred Channel" value={contact.preferred_channel} />
             )}
             {contact.location && (
-              <div>
-                <dt className="text-xs text-coffee-500 mb-0.5">Location</dt>
-                <dd className="text-coffee-900">{contact.location}</dd>
-              </div>
+              <PanelField label="Location" value={contact.location} />
             )}
-          </dl>
+          </div>
         </div>
 
         {/* Personal Notes */}
         {contact.personal_notes && (
-          <div className="bg-white border border-coffee-200 rounded-lg p-4">
-            <h2 className="text-sm font-semibold text-coffee-800 mb-2">Personal Notes</h2>
+          <div className="bg-white border border-coffee-200 rounded-xl p-5">
+            <p className="text-xs text-coffee-400 uppercase tracking-wide mb-3">Personal Notes</p>
             <p className="text-sm text-coffee-700 whitespace-pre-wrap leading-relaxed">{contact.personal_notes}</p>
           </div>
         )}
 
         {/* Purchase History */}
-        <div className="bg-white border border-coffee-200 rounded-lg p-4">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-sm font-semibold text-coffee-800">Purchase History</h2>
-            <button
-              onClick={openLinkModal}
-              className="px-3 py-1.5 bg-coffee-700 text-white rounded text-xs font-semibold hover:bg-coffee-800"
-            >
-              Link to allocation request
-            </button>
+        <div className="bg-white border border-coffee-200 rounded-xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs text-coffee-400 uppercase tracking-wide">Purchase History</p>
+            <Button variant="secondary" size="sm" onClick={openLinkModal}>
+              Link Request
+            </Button>
           </div>
 
-          <p className="text-xs text-coffee-500 mb-4">
+          <p className="text-xs text-coffee-400 mb-4">
             Participated in{' '}
-            <strong className="text-coffee-800">{contact.total_allocations_participated ?? 0}</strong>
-            {' '}allocations · Return rate:{' '}
-            <strong className="text-coffee-800">{fmtRate(contact.return_rate)}</strong>
+            <span className="text-coffee-800" style={{ fontWeight: 500 }}>
+              {contact.total_allocations_participated ?? 0}
+            </span>{' '}
+            allocations · Return rate:{' '}
+            <span className="text-coffee-800" style={{ fontWeight: 500 }}>
+              {fmtRate(contact.return_rate)}
+            </span>
           </p>
 
           {history.length === 0 ? (
-            <p className="text-sm text-coffee-400">No purchase history yet.</p>
+            <p className="text-sm text-coffee-300">No purchase history yet.</p>
           ) : (
             <ul className="space-y-3">
-              {history.map((h, i) => (
-                <li key={h.id || i} className="flex items-start gap-3 border-b border-coffee-50 pb-3 last:border-0 last:pb-0">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                      <span className="font-mono text-sm font-semibold text-coffee-900">{h.allocation_code}</span>
-                      <span className={`text-xs px-1.5 py-0.5 rounded ${PROCESS_COLORS[h.process] || 'bg-gray-100 text-gray-600'}`}>
-                        {h.process}
-                      </span>
-                      <span className="text-xs text-coffee-500">{h.harvest_year}</span>
+              {history.map((h, i) => {
+                const reqMeta = REQUEST_STATUS_META[h.status] || { cls: 'badge-draft', label: h.status };
+                return (
+                  <li key={h.id || i} className="flex items-start gap-3 pb-3 last:pb-0" style={{ borderBottom: '1px solid #F2EAE0' }}>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                        <span className="font-mono text-sm text-coffee-900" style={{ fontWeight: 500 }}>
+                          {h.allocation_code}
+                        </span>
+                        <ProcessBadge process={h.process} />
+                        <span className="text-xs text-coffee-400">{h.harvest_year}</span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-coffee-500">
+                        <span>{h.quantity_bags} bag{h.quantity_bags !== 1 ? 's' : ''}</span>
+                        <span className="text-coffee-200">·</span>
+                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full capitalize ${reqMeta.cls}`}>
+                          {reqMeta.label}
+                        </span>
+                        <span className="text-coffee-200">·</span>
+                        <span>{fmtDate(h.created_at)}</span>
+                      </div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-coffee-600">
-                      <span>{h.quantity_bags} bag{h.quantity_bags !== 1 ? 's' : ''}</span>
-                      <span className="text-coffee-300">·</span>
-                      <span className={`px-1.5 py-0.5 rounded font-medium capitalize ${REQUEST_STATUS_COLORS[h.status] || ''}`}>
-                        {h.status}
-                      </span>
-                      <span className="text-coffee-300">·</span>
-                      <span>{fmtDate(h.created_at)}</span>
-                    </div>
-                  </div>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
@@ -219,36 +205,44 @@ export default function ContactDetail() {
 
       {/* Link request modal */}
       {linkModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-            <h2 className="text-lg font-bold text-coffee-900 mb-4">Link Allocation Request</h2>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(34,21,8,0.2)' }}
+        >
+          <div className="bg-white rounded-2xl border border-coffee-200 w-full max-w-md p-6">
+            <h2 className="text-base text-coffee-900 mb-4" style={{ fontWeight: 500 }}>
+              Link Allocation Request
+            </h2>
 
             <input
               type="text"
               placeholder="Search by allocation code or contact…"
               value={reqSearch}
               onChange={e => setReqSearch(e.target.value)}
-              className="w-full border border-coffee-300 rounded-md px-3 py-2 text-sm mb-3"
+              className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg mb-3 focus:border-coffee-500 focus:ring-2 focus:ring-coffee-100"
               autoFocus
             />
 
-            <div className="max-h-52 overflow-y-auto border border-coffee-200 rounded-md mb-4">
+            <div
+              className="max-h-52 overflow-y-auto rounded-xl border border-coffee-200 mb-4"
+            >
               {filteredRequests.length === 0 ? (
-                <p className="text-sm text-coffee-400 p-3">No requests found.</p>
+                <p className="text-sm text-coffee-300 p-3">No requests found.</p>
               ) : (
                 filteredRequests.map(r => (
                   <button
                     key={r.id}
                     type="button"
                     onClick={() => setSelectedReqId(r.id)}
-                    className={`w-full text-left px-3 py-2 text-sm border-b border-coffee-50 last:border-0 transition-colors ${
-                      selectedReqId === r.id
-                        ? 'bg-coffee-700 text-white'
-                        : 'hover:bg-coffee-50 text-coffee-800'
-                    }`}
+                    className="w-full text-left px-3 py-2 text-sm transition-colors"
+                    style={{
+                      borderBottom: '1px solid #F2EAE0',
+                      background: selectedReqId === r.id ? '#533A24' : undefined,
+                      color:      selectedReqId === r.id ? '#fff' : '#3A2616',
+                    }}
                   >
-                    <span className="font-mono font-semibold">{r.allocation_code}</span>
-                    <span className={`text-xs ml-2 ${selectedReqId === r.id ? 'text-coffee-200' : 'text-coffee-500'}`}>
+                    <span className="font-mono" style={{ fontWeight: 500 }}>{r.allocation_code}</span>
+                    <span className="text-xs ml-2" style={{ color: selectedReqId === r.id ? '#C9B49A' : '#A8896A' }}>
                       {r.contact_name} · {fmtDate(r.created_at)}
                     </span>
                   </button>
@@ -256,23 +250,17 @@ export default function ContactDetail() {
               )}
             </div>
 
-            {linkError && <p className="text-red-600 text-sm mb-3">{linkError}</p>}
+            {linkError && (
+              <p className="text-xs mb-3" style={{ color: '#A32D2D' }}>{linkError}</p>
+            )}
 
             <form onSubmit={submitLink} className="flex gap-3">
-              <button
-                type="submit"
-                disabled={linkSaving || !selectedReqId}
-                className="flex-1 py-2 bg-coffee-700 text-white rounded font-semibold text-sm disabled:opacity-40"
-              >
+              <Button type="submit" disabled={linkSaving || !selectedReqId} className="flex-1 justify-center">
                 {linkSaving ? 'Linking…' : 'Link Request'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setLinkModal(false)}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded font-semibold text-sm"
-              >
+              </Button>
+              <Button type="button" variant="secondary" onClick={() => setLinkModal(false)}>
                 Cancel
-              </button>
+              </Button>
             </form>
           </div>
         </div>

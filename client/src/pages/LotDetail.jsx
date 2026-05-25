@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import Layout from '../components/Layout';
 import YieldCalculator from '../components/YieldCalculator';
+import { Button, FormSelect, FormInput, ProcessBadge } from '../components/ui';
 
 function gToKg(g) { return (g / 1000).toFixed(2); }
 
@@ -21,9 +22,9 @@ function fmtDateTime(d) {
 }
 
 const MOVEMENT_META = {
-  reservation:       { label: 'Reservation',        cls: 'bg-gray-100 text-gray-700' },
-  roast_consumption: { label: 'Roast Consumption',   cls: 'bg-blue-100 text-blue-700' },
-  write_off:         { label: 'Write-off',           cls: 'bg-red-100 text-red-700' },
+  reservation:       { label: 'Reservation',      bg: '#F1EFE8', color: '#888780' },
+  roast_consumption: { label: 'Roast Consumption', bg: '#E6F1FB', color: '#185FA5' },
+  write_off:         { label: 'Write-off',         bg: '#FCEBEB', color: '#A32D2D' },
 };
 
 const INIT_MOVE = { movement_type: 'reservation', weight_kg: '', reason: '' };
@@ -33,13 +34,12 @@ export default function LotDetail() {
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const [lot, setLot] = useState(null);
-  const [movements, setMovements] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  const [moveForm, setMoveForm] = useState(INIT_MOVE);
-  const [moveError, setMoveError] = useState('');
+  const [lot,         setLot]         = useState(null);
+  const [movements,   setMovements]   = useState([]);
+  const [loading,     setLoading]     = useState(true);
+  const [error,       setError]       = useState('');
+  const [moveForm,    setMoveForm]    = useState(INIT_MOVE);
+  const [moveError,   setMoveError]   = useState('');
   const [moveLoading, setMoveLoading] = useState(false);
 
   const canWrite = user?.role === 'admin' || user?.role === 'roaster';
@@ -86,91 +86,92 @@ export default function LotDetail() {
     }
   }
 
-  if (loading) {
-    return (
-      <Layout>
-        <div className="text-center py-24 text-coffee-300 text-sm">Loading…</div>
-      </Layout>
-    );
-  }
+  if (loading) return (
+    <Layout>
+      <div className="px-6 py-6 text-sm text-coffee-400">Loading…</div>
+    </Layout>
+  );
 
-  if (error || !lot) {
-    return (
-      <Layout>
-        <div className="text-center py-24">
-          <p className="text-red-500 text-sm">{error || 'Lot not found.'}</p>
-          <button onClick={() => navigate('/inventory')} className="mt-3 text-coffee-600 underline text-sm">
-            Back to inventory
-          </button>
-        </div>
-      </Layout>
-    );
-  }
+  if (error || !lot) return (
+    <Layout>
+      <div className="px-6 py-24 text-center">
+        <p className="text-sm" style={{ color: '#A32D2D' }}>{error || 'Lot not found.'}</p>
+        <button
+          onClick={() => navigate('/inventory')}
+          className="mt-3 text-xs text-coffee-500 hover:text-coffee-700 transition-colors"
+        >
+          Back to Inventory
+        </button>
+      </div>
+    </Layout>
+  );
 
   return (
     <Layout>
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-
-        {/* Breadcrumb + header */}
-        <div className="mb-6">
+      <div className="max-w-5xl mx-auto px-6 py-6 space-y-5">
+        {/* Header */}
+        <div>
           <button
             onClick={() => navigate('/inventory')}
-            className="text-sm text-coffee-400 hover:text-coffee-700 transition-colors flex items-center gap-1 mb-2"
+            className="text-xs text-coffee-400 hover:text-coffee-600 transition-colors mb-3 block"
           >
             ← Inventory
           </button>
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
             <div>
-              <h1 className="text-2xl font-bold text-coffee-900 font-mono">{lot.lot_code}</h1>
-              <p className="text-coffee-500 text-sm mt-0.5">
-                {lot.estate} · {lot.process} · Harvest {lot.harvest_year}
+              <div className="flex items-center gap-3 mb-1">
+                <h1 className="font-mono text-2xl text-coffee-900" style={{ fontWeight: 500 }}>
+                  {lot.lot_code}
+                </h1>
+                <ProcessBadge process={lot.process} />
+              </div>
+              <p className="text-sm text-coffee-400">
+                {lot.estate} · Harvest {lot.harvest_year}
               </p>
             </div>
             <div className="text-right">
-              <p className="text-xs text-coffee-400 uppercase tracking-wide">Current Stock</p>
-              <p className="text-2xl font-bold text-coffee-900">{gToKg(lot.current_weight_g)} <span className="text-sm font-normal text-coffee-500">kg</span></p>
+              <p className="text-xs text-coffee-400 uppercase tracking-wide mb-1">Current Stock</p>
+              <p className="text-2xl text-coffee-900" style={{ fontWeight: 500 }}>
+                {gToKg(lot.current_weight_g)}
+                <span className="text-sm text-coffee-400" style={{ fontWeight: 400 }}> kg</span>
+              </p>
             </div>
           </div>
         </div>
 
-        {/* Quality alert banner */}
+        {/* Quality alert */}
         {lot.quality_alert && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 flex items-start gap-3">
-            <span className="text-amber-500 text-xl mt-0.5">⚠</span>
-            <div>
-              <p className="font-semibold text-amber-800 text-sm">Quality Alert — Lot is over 12 months old</p>
-              <p className="text-amber-600 text-sm mt-0.5">
-                Arrived {fmtDate(lot.arrival_date)}. Consider prioritising this lot for the next roast.
-              </p>
-            </div>
+          <div className="px-4 py-3 rounded-xl text-sm" style={{ background: '#FAEEDA', color: '#BA7517' }}>
+            <span style={{ fontWeight: 500 }}>Quality Alert — Lot is over 12 months old.</span>
+            {' '}Arrived {fmtDate(lot.arrival_date)}. Consider prioritising for the next roast.
           </div>
         )}
 
-        {/* Lot details card */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mb-6">
-          <h2 className="font-semibold text-coffee-800 mb-4">Lot Details</h2>
-          <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-8 gap-y-5 text-sm">
+        {/* Lot details */}
+        <div className="bg-white border border-coffee-200 rounded-xl p-5">
+          <p className="text-xs text-coffee-400 uppercase tracking-wide mb-4">Lot Details</p>
+          <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-8 gap-y-4 text-sm">
             {[
-              ['Lot Code',         <span className="font-mono">{lot.lot_code}</span>],
+              ['Lot Code',         <span className="font-mono" key="lc">{lot.lot_code}</span>],
               ['Estate',           lot.estate],
               ['Process',          lot.process],
               ['Harvest Year',     lot.harvest_year],
               ['Arrival Date',     fmtDate(lot.arrival_date)],
               ['Storage Location', lot.storage_location],
               ['Arrival Weight',   `${gToKg(lot.arrival_weight_g)} kg`],
-              ['Current Weight',   <span className="font-bold">{gToKg(lot.current_weight_g)} kg</span>],
+              ['Current Weight',   `${gToKg(lot.current_weight_g)} kg`],
               ...(lot.moisture_content != null ? [['Moisture Content', `${lot.moisture_content}%`]] : []),
-              ...(lot.water_activity   != null ? [['Water Activity',   `${lot.water_activity}`]]   : []),
+              ...(lot.water_activity   != null ? [['Water Activity',   `${lot.water_activity}`]]    : []),
             ].map(([label, value]) => (
               <div key={label}>
                 <dt className="text-xs text-coffee-400 uppercase tracking-wide mb-1">{label}</dt>
-                <dd className="font-medium text-coffee-900">{value}</dd>
+                <dd className="text-coffee-800" style={{ fontWeight: 500 }}>{value}</dd>
               </div>
             ))}
             {lot.supplier_notes && (
               <div className="col-span-2 sm:col-span-3">
                 <dt className="text-xs text-coffee-400 uppercase tracking-wide mb-1">Supplier Notes</dt>
-                <dd className="text-coffee-700">{lot.supplier_notes}</dd>
+                <dd className="text-sm text-coffee-600">{lot.supplier_notes}</dd>
               </div>
             )}
           </dl>
@@ -185,92 +186,92 @@ export default function LotDetail() {
 
         {/* Record movement */}
         {canWrite && (
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mb-6">
-            <h2 className="font-semibold text-coffee-800 mb-4">Record Movement</h2>
+          <div className="bg-white border border-coffee-200 rounded-xl p-5">
+            <p className="text-xs text-coffee-400 uppercase tracking-wide mb-4">Record Movement</p>
             <form onSubmit={handleMovement} className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
-              <div>
-                <label className="block text-xs font-medium text-coffee-600 mb-1">Type</label>
-                <select
-                  value={moveForm.movement_type}
-                  onChange={(e) => setMoveForm((f) => ({ ...f, movement_type: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-coffee-300"
-                >
-                  <option value="reservation">Reservation</option>
-                  <option value="roast_consumption">Roast Consumption</option>
-                  <option value="write_off">Write-off</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-coffee-600 mb-1">Weight (kg)</label>
-                <input
-                  type="number" step="0.001" min="0.001"
-                  value={moveForm.weight_kg}
-                  onChange={(e) => setMoveForm((f) => ({ ...f, weight_kg: e.target.value }))}
-                  placeholder="e.g. 5.000"
-                  required
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-coffee-300"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-coffee-600 mb-1">Reason (optional)</label>
-                <input
-                  type="text"
-                  value={moveForm.reason}
-                  onChange={(e) => setMoveForm((f) => ({ ...f, reason: e.target.value }))}
-                  placeholder="e.g. Batch RS-001"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-coffee-300"
-                />
-              </div>
-              <button
-                type="submit" disabled={moveLoading}
-                className="bg-coffee-700 text-white px-4 py-2 rounded-lg hover:bg-coffee-800 disabled:opacity-50 text-sm font-medium transition-colors h-[38px]"
+              <FormSelect
+                label="Type"
+                value={moveForm.movement_type}
+                onChange={e => setMoveForm(f => ({ ...f, movement_type: e.target.value }))}
               >
+                <option value="reservation">Reservation</option>
+                <option value="roast_consumption">Roast Consumption</option>
+                <option value="write_off">Write-off</option>
+              </FormSelect>
+
+              <FormInput
+                label="Weight (kg)"
+                type="number"
+                step="0.001"
+                min="0.001"
+                value={moveForm.weight_kg}
+                onChange={e => setMoveForm(f => ({ ...f, weight_kg: e.target.value }))}
+                placeholder="e.g. 5.000"
+                required
+              />
+
+              <FormInput
+                label="Reason (optional)"
+                type="text"
+                value={moveForm.reason}
+                onChange={e => setMoveForm(f => ({ ...f, reason: e.target.value }))}
+                placeholder="e.g. Batch RS-001"
+              />
+
+              <Button type="submit" disabled={moveLoading} variant="secondary" className="self-end">
                 {moveLoading ? 'Recording…' : 'Record'}
-              </button>
+              </Button>
             </form>
-            {moveError && <p className="text-red-500 text-sm mt-2">{moveError}</p>}
+            {moveError && (
+              <p className="text-xs mt-2" style={{ color: '#A32D2D' }}>{moveError}</p>
+            )}
           </div>
         )}
 
         {/* Movement history */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-          <h2 className="font-semibold text-coffee-800 mb-4">
+        <div className="bg-white border border-coffee-200 rounded-xl p-5">
+          <p className="text-xs text-coffee-400 uppercase tracking-wide mb-4">
             Movement History
-            <span className="ml-2 text-xs font-normal text-coffee-400">({movements.length})</span>
-          </h2>
+            <span className="ml-2 text-coffee-300 normal-case">({movements.length})</span>
+          </p>
           {movements.length === 0 ? (
-            <p className="text-coffee-300 text-sm">No movements recorded yet.</p>
+            <p className="text-sm text-coffee-300">No movements recorded yet.</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
+              <table className="w-full text-xs">
                 <thead>
-                  <tr className="border-b border-gray-100">
-                    {['Date & Time', 'Type', 'Weight Change', 'Reason', 'Authorised By'].map((h) => (
+                  <tr style={{ borderBottom: '1px solid #F2EAE0' }}>
+                    {['Date & Time', 'Type', 'Weight Change', 'Reason', 'Authorised By'].map(h => (
                       <th
                         key={h}
-                        className={`pb-3 text-xs font-semibold text-coffee-500 uppercase tracking-wide whitespace-nowrap ${h === 'Weight Change' ? 'text-right pr-4' : 'text-left pr-6'}`}
+                        className={`pb-2.5 text-coffee-400 uppercase tracking-wide whitespace-nowrap ${
+                          h === 'Weight Change' ? 'text-right pr-4' : 'text-left pr-6'
+                        }`}
                       >
                         {h}
                       </th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {movements.map((m) => {
-                    const meta = MOVEMENT_META[m.movement_type] || {};
+                <tbody>
+                  {movements.map(m => {
+                    const meta = MOVEMENT_META[m.movement_type] || { label: m.movement_type, bg: '#F2EAE0', color: '#8B6A47' };
                     return (
-                      <tr key={m.id}>
-                        <td className="py-3 pr-6 text-gray-500 whitespace-nowrap">{fmtDateTime(m.created_at)}</td>
-                        <td className="py-3 pr-6">
-                          <span className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full ${meta.cls}`}>
+                      <tr key={m.id} style={{ borderBottom: '1px solid #F2EAE0' }}>
+                        <td className="py-2.5 pr-6 text-coffee-400 whitespace-nowrap">{fmtDateTime(m.created_at)}</td>
+                        <td className="py-2.5 pr-6">
+                          <span
+                            className="inline-block text-xs px-1.5 py-0.5 rounded-full"
+                            style={{ background: meta.bg, color: meta.color }}
+                          >
                             {meta.label}
                           </span>
                         </td>
-                        <td className="py-3 pr-4 text-right font-semibold whitespace-nowrap text-red-600">
+                        <td className="py-2.5 pr-4 text-right whitespace-nowrap" style={{ fontWeight: 500, color: '#A32D2D' }}>
                           {m.weight_change_g >= 0 ? '+' : ''}{gToKg(m.weight_change_g)} kg
                         </td>
-                        <td className="py-3 pr-6 text-gray-500">{m.reason || '—'}</td>
-                        <td className="py-3 text-gray-500">{m.authorised_by_name || '—'}</td>
+                        <td className="py-2.5 pr-6 text-coffee-500">{m.reason || '—'}</td>
+                        <td className="py-2.5 text-coffee-500">{m.authorised_by_name || '—'}</td>
                       </tr>
                     );
                   })}
@@ -279,7 +280,7 @@ export default function LotDetail() {
             </div>
           )}
         </div>
-      </main>
+      </div>
     </Layout>
   );
 }

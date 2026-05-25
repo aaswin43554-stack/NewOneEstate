@@ -1,3 +1,116 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  /* Status colors */
+  --status-draft-text: #888780;
+  --status-draft-bg: #F1EFE8;
+  --status-review-text: #BA7517;
+  --status-review-bg: #FAEEDA;
+  --status-published-text: #3B6D11;
+  --status-published-bg: #EAF3DE;
+  --status-missing-text: #A32D2D;
+  --status-missing-bg: #FCEBEB;
+
+  /* Process colors */
+  --process-washed-text: #185FA5;
+  --process-washed-bg: #E6F1FB;
+  --process-honey-text: #BA7517;
+  --process-honey-bg: #FAEEDA;
+  --process-natural-text: #3B6D11;
+  --process-natural-bg: #EAF3DE;
+  --process-anaerobic-text: #534AB7;
+  --process-anaerobic-bg: #EEEDFE;
+
+  /* Event colors (timeline) */
+  --event-roast: #EF9F27;
+  --event-allocation: #3B6D11;
+  --event-cupping: #534AB7;
+  --event-contact: #185FA5;
+}
+
+@layer base {
+  html, body, #root {
+    font-family: 'Inter', system-ui, sans-serif;
+    background-color: #FDFAF6;
+    color: #221508;
+  }
+
+  * {
+    font-weight: inherit;
+  }
+
+  h1, h2, h3, h4, h5, h6, strong, b {
+    font-weight: 500;
+  }
+
+  *:focus {
+    outline: none;
+  }
+
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #FAF6F0;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #E0D0BC;
+    border-radius: 2px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #C9B49A;
+  }
+}
+
+/* Global font-weight cap — override Tailwind heavy classes to max 500 */
+.font-bold,
+.font-extrabold,
+.font-black,
+.font-semibold {
+  font-weight: 500 !important;
+}
+
+/* Status badge classes */
+.badge-draft        { color: var(--status-draft-text);     background: var(--status-draft-bg); }
+.badge-under-review { color: var(--status-review-text);    background: var(--status-review-bg); }
+.badge-published    { color: var(--status-published-text); background: var(--status-published-bg); }
+.badge-missing      { color: var(--status-missing-text);   background: var(--status-missing-bg); }
+
+/* Process badge classes */
+.badge-washed    { color: var(--process-washed-text);    background: var(--process-washed-bg); }
+.badge-honey     { color: var(--process-honey-text);     background: var(--process-honey-bg); }
+.badge-natural   { color: var(--process-natural-text);   background: var(--process-natural-bg); }
+.badge-anaerobic { color: var(--process-anaerobic-text); background: var(--process-anaerobic-bg); }
+
+/* Panel slide-in animation */
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0);    }
+}
+.panel-slide-in { animation: slideInRight 200ms ease-out forwards; }
+
+/* Toast animations */
+@keyframes toastIn {
+  from { transform: translateX(120%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+@keyframes toastOut {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+.toast-enter { animation: toastIn  200ms ease-out forwards; }
+.toast-exit  { animation: toastOut 200ms ease-in  forwards; }
+
+/* Recharts — coffee grid lines */
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+  stroke: #F2EAE0 !important;
+}
+
+input[type="range"] { accent-color: #533A24; }
+input[type="date"]  { color-scheme: light;   }

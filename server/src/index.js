@@ -1,4 +1,4 @@
-require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
+require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 
 // Prevent ANY unhandled error from crashing the server
 process.on('unhandledRejection', (reason) => {

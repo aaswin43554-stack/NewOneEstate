@@ -1,18 +1,80 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Layout from '../../components/Layout';
 import { api } from '../../lib/api';
+import { PageHeader } from '../../components/ui';
 
-const SEGMENT_COLORS = {
-  Laos:      'bg-coffee-100 text-coffee-700',
-  Thailand:  'bg-amber-100 text-amber-700',
-  Malaysia:  'bg-green-100 text-green-700',
-  Singapore: 'bg-blue-100 text-blue-700',
-  Other:     'bg-gray-100 text-gray-600',
+function initials(name) {
+  if (!name) return '?';
+  const parts = name.trim().split(' ');
+  return parts.length >= 2
+    ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    : name.slice(0, 2).toUpperCase();
+}
+
+const SEGMENT_DOT = {
+  Laos:      '#8B6A47',
+  Thailand:  '#BA7517',
+  Malaysia:  '#3B6D11',
+  Singapore: '#185FA5',
+  Other:     '#A8896A',
 };
+
+function PrivateCard({ contact, onClick }) {
+  const dotColor = SEGMENT_DOT[contact.market_segment] || '#A8896A';
+
+  return (
+    <div
+      onClick={onClick}
+      className="bg-white border border-coffee-200 rounded-xl p-5 cursor-pointer transition-colors duration-150 hover:border-coffee-300"
+      style={{ borderLeft: '3px solid #534AB7' }}
+    >
+      {/* Avatar + name */}
+      <div className="flex items-center gap-3 mb-4">
+        <div
+          className="flex items-center justify-center rounded-full flex-shrink-0"
+          style={{ width: 40, height: 40, fontSize: 14, fontWeight: 500, background: '#EEEDFE', color: '#534AB7' }}
+        >
+          {initials(contact.name)}
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm text-coffee-900 truncate" style={{ fontWeight: 500 }}>
+            {contact.name}
+          </p>
+          {contact.preferred_channel && (
+            <p className="text-xs text-coffee-400 truncate">{contact.preferred_channel}</p>
+          )}
+        </div>
+      </div>
+
+      {/* Divider */}
+      <div className="border-t border-coffee-100 pt-3">
+        {contact.primary_contact_method && (
+          <p className="text-sm text-coffee-700 mb-2 select-all">
+            {contact.primary_contact_method}
+          </p>
+        )}
+        <div className="flex items-center justify-between text-xs text-coffee-300">
+          <span className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: dotColor }} />
+            {contact.market_segment}
+          </span>
+          <span
+            className="inline-flex items-center px-2 py-0.5 rounded-full text-xs"
+            style={{ background: '#EEEDFE', color: '#534AB7' }}
+          >
+            Private List
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function ContactPrivateList() {
   const [contacts, setContacts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading,  setLoading]  = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     api.get('/contacts/private-list')
@@ -23,36 +85,33 @@ export default function ContactPrivateList() {
 
   return (
     <Layout>
-      <div className="max-w-3xl mx-auto p-4 space-y-4">
-        <h1 className="text-2xl font-bold text-coffee-900">
-          Private List{!loading && ` — ${contacts.length} contacts`}
-        </h1>
+      <div className="max-w-5xl mx-auto px-6 py-6">
+        <PageHeader
+          title="Private List"
+          subtitle={loading ? 'Loading…' : `${contacts.length} VIP buyer${contacts.length !== 1 ? 's' : ''}`}
+        />
 
-        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">
-          Contact these buyers personally before opening each allocation.
+        <div
+          className="mb-6 px-4 py-3 rounded-xl text-sm"
+          style={{ background: '#FAEEDA', color: '#BA7517' }}
+        >
+          Contact these buyers personally before opening each allocation. No automated outreach.
         </div>
 
         {loading ? (
-          <p className="text-coffee-500">Loading…</p>
+          <p className="text-sm text-coffee-400">Loading…</p>
         ) : contacts.length === 0 ? (
-          <p className="text-coffee-400 text-center py-12">No private list contacts yet.</p>
+          <p className="text-sm text-coffee-300 text-center py-16">
+            No private list contacts yet.
+          </p>
         ) : (
-          <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             {contacts.map(c => (
-              <div key={c.id} className="bg-white border border-coffee-200 rounded-lg px-5 py-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <p className="text-lg font-bold text-coffee-900 leading-tight">{c.name}</p>
-                    <p className="text-base text-coffee-800 mt-1 font-medium select-all">{c.primary_contact_method}</p>
-                    {c.preferred_channel && (
-                      <p className="text-sm text-coffee-500 mt-0.5">{c.preferred_channel}</p>
-                    )}
-                  </div>
-                  <span className={`shrink-0 text-xs px-2 py-1 rounded font-semibold ${SEGMENT_COLORS[c.market_segment] || 'bg-gray-100 text-gray-600'}`}>
-                    {c.market_segment}
-                  </span>
-                </div>
-              </div>
+              <PrivateCard
+                key={c.id}
+                contact={c}
+                onClick={() => navigate(`/contacts/${c.id}`)}
+              />
             ))}
           </div>
         )}

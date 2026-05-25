@@ -2,24 +2,28 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../../components/Layout';
 import { api } from '../../lib/api';
+import { Button, FormInput, FormTextarea, StatusBadge, PageHeader } from '../../components/ui';
 
 function mssToSec(str) {
   const [m, s] = (str || '').split(':').map(Number);
-  return (m||0)*60 + (s||0);
+  return (m || 0) * 60 + (s || 0);
 }
 function secToMSS(sec) {
   if (!sec) return '';
-  return `${String(Math.floor(sec/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`;
+  return `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`;
 }
 
-const STATUS_STYLES = {
-  development:'bg-gray-100 text-gray-600', pending_approval:'bg-amber-100 text-amber-700',
-  approved:'bg-green-100 text-green-700', retired:'bg-red-50 text-red-400',
+const STATUS_MAP = {
+  development:      'draft',
+  pending_approval: 'under_review',
+  approved:         'active',
+  retired:          'archived',
 };
 
 export default function ProfileEdit() {
   const { id } = useParams();
   const navigate = useNavigate();
+
   const [profile, setProfile] = useState(null);
   const [form, setForm] = useState(null);
   const [error, setError] = useState('');
@@ -39,7 +43,8 @@ export default function ProfileEdit() {
   function set(key, val) { setForm(p => ({ ...p, [key]: val })); }
 
   async function handleSubmit(e) {
-    e.preventDefault(); setError('');
+    e.preventDefault();
+    setError('');
     const totalS = mssToSec(form.total_time_mss);
     if (!totalS) { setError('Total time is required.'); return; }
     setSaving(true);
@@ -54,78 +59,108 @@ export default function ProfileEdit() {
     setSaving(false);
   }
 
-  if (!form) return <Layout><div className="p-6 text-coffee-600">Loading…</div></Layout>;
+  if (!form) return <Layout><div className="px-6 py-6 text-sm text-coffee-400">Loading…</div></Layout>;
 
   const locked = profile.status !== 'development';
 
   return (
     <Layout>
-      <div className="max-w-lg mx-auto p-4">
-        <div className="flex items-center gap-3 mb-4">
-          <h1 className="text-2xl font-bold text-coffee-900">Edit Profile</h1>
-          <span className={`text-xs px-2 py-1 rounded capitalize font-medium ${STATUS_STYLES[profile.status]}`}>
-            {profile.status.replace(/_/g,' ')}
-          </span>
+      <div className="max-w-lg mx-auto px-6 py-6">
+        <div className="flex items-center gap-3 mb-6">
+          <h1 className="text-xl text-coffee-900" style={{ fontWeight: 500 }}>Edit Profile</h1>
+          <StatusBadge status={STATUS_MAP[profile.status] || 'draft'} label={profile.status.replace(/_/g, ' ')} />
         </div>
 
         {locked && (
-          <div className="bg-amber-50 border border-amber-200 rounded-md px-4 py-3 mb-4 text-sm text-amber-800">
-            This profile cannot be edited — only development profiles can be modified.
+          <div
+            className="px-4 py-3 rounded-xl text-sm mb-5"
+            style={{ background: '#FAEEDA', color: '#BA7517' }}
+          >
+            Only development profiles can be modified.
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-coffee-800 mb-1">Estate</label>
-            <input value={form.estate} onChange={e => set('estate', e.target.value)} disabled={locked}
-              className="w-full border border-coffee-300 rounded-md px-3 py-2 text-sm disabled:bg-coffee-50" required />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-coffee-800 mb-1">Process</label>
-              <div className="border border-coffee-200 bg-coffee-50 rounded px-3 py-2 text-sm text-coffee-600">{profile.process}</div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-coffee-800 mb-1">Harvest Year</label>
-              <div className="border border-coffee-200 bg-coffee-50 rounded px-3 py-2 text-sm text-coffee-600">{profile.harvest_year}</div>
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { key:'charge_temp_c', label:'Charge °C', type:'number' },
-              { key:'eject_temp_c',  label:'Eject °C',  type:'number' },
-              { key:'target_dtr',    label:'DTR %',     type:'number', step:'0.01' },
-            ].map(({ key, label, type, step }) => (
-              <div key={key}>
-                <label className="block text-sm font-medium text-coffee-800 mb-1">{label}</label>
-                <input type={type} step={step} value={form[key]} onChange={e => set(key, e.target.value)} disabled={locked}
-                  className="w-full border border-coffee-300 rounded-md px-3 py-2 text-sm disabled:bg-coffee-50" required />
+          <FormInput
+            label="Estate"
+            value={form.estate}
+            onChange={e => set('estate', e.target.value)}
+            disabled={locked}
+            required
+          />
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1">
+              <label className="text-sm text-coffee-600" style={{ fontWeight: 500 }}>Process</label>
+              <div
+                className="h-9 px-3 flex items-center text-sm text-coffee-500 rounded-lg border border-coffee-200"
+                style={{ background: '#FAF6F0' }}
+              >
+                {profile.process}
               </div>
-            ))}
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-coffee-800 mb-1">Total Time (MM:SS)</label>
-            <input type="text" value={form.total_time_mss} onChange={e => set('total_time_mss', e.target.value)}
-              disabled={locked} placeholder="09:30" pattern="\d{1,2}:\d{2}"
-              className="w-full border border-coffee-300 rounded-md px-3 py-2 text-sm font-mono disabled:bg-coffee-50" required />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-coffee-800 mb-1">Flavour Target</label>
-            <textarea value={form.flavour_target} onChange={e => set('flavour_target', e.target.value)}
-              disabled={locked} rows={3}
-              className="w-full border border-coffee-300 rounded-md px-3 py-2 text-sm disabled:bg-coffee-50" required />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-sm text-coffee-600" style={{ fontWeight: 500 }}>Harvest Year</label>
+              <div
+                className="h-9 px-3 flex items-center text-sm text-coffee-500 rounded-lg border border-coffee-200"
+                style={{ background: '#FAF6F0' }}
+              >
+                {profile.harvest_year}
+              </div>
+            </div>
           </div>
 
-          {error && <p className="text-red-600 text-sm">{error}</p>}
-          <div className="flex gap-3">
-            <button type="submit" disabled={saving || locked}
-              className="flex-1 py-3 bg-coffee-700 text-white rounded-md font-semibold hover:bg-coffee-800 disabled:opacity-50">
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { key: 'charge_temp_c', label: 'Charge °C', type: 'number' },
+              { key: 'eject_temp_c',  label: 'Eject °C',  type: 'number' },
+              { key: 'target_dtr',    label: 'DTR %',     type: 'number', step: '0.01' },
+            ].map(({ key, label, type, step }) => (
+              <FormInput
+                key={key}
+                label={label}
+                type={type}
+                step={step}
+                value={form[key]}
+                onChange={e => set(key, e.target.value)}
+                disabled={locked}
+                required
+              />
+            ))}
+          </div>
+
+          <FormInput
+            label="Total Time (MM:SS)"
+            type="text"
+            value={form.total_time_mss}
+            onChange={e => set('total_time_mss', e.target.value)}
+            disabled={locked}
+            placeholder="09:30"
+            pattern="\d{1,2}:\d{2}"
+            className="font-mono"
+            required
+          />
+
+          <FormTextarea
+            label="Flavour Target"
+            value={form.flavour_target}
+            onChange={e => set('flavour_target', e.target.value)}
+            disabled={locked}
+            rows={3}
+            required
+          />
+
+          {error && (
+            <p className="text-xs" style={{ color: '#A32D2D' }}>{error}</p>
+          )}
+
+          <div className="flex gap-3 pt-1">
+            <Button type="submit" disabled={saving || locked} className="flex-1 justify-center" size="lg">
               {saving ? 'Saving…' : 'Save Changes'}
-            </button>
-            <button type="button" onClick={() => navigate(`/profiles/${id}`)}
-              className="px-4 py-3 bg-gray-200 rounded-md font-semibold">
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => navigate(`/profiles/${id}`)}>
               Cancel
-            </button>
+            </Button>
           </div>
         </form>
       </div>

@@ -3,9 +3,10 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import Layout from '../../components/Layout';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
+import { Button, ProcessBadge } from '../../components/ui';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 
 const TZ = 'Asia/Vientiane';
-
 const DOC_TYPES = ['field_notes', 'roast_log', 'cupping_record', 'allocation_record'];
 const DOC_LABELS = {
   field_notes:       'Field Notes',
@@ -13,17 +14,11 @@ const DOC_LABELS = {
   cupping_record:    'Cupping Record',
   allocation_record: 'Allocation Record',
 };
-const STATUS_STYLES = {
-  draft:        'bg-gray-100 text-gray-600',
-  under_review: 'bg-amber-100 text-amber-700',
-  published:    'bg-green-100 text-green-700',
-  missing:      'border border-red-300 text-red-600',
-};
-const STATUS_LABELS = {
-  draft:        'Draft',
-  under_review: 'Under Review',
-  published:    'Published',
-  missing:      'Missing',
+const STATUS_META = {
+  draft:        { cls: 'badge-draft',        label: 'Draft' },
+  under_review: { cls: 'badge-under-review', label: 'Under Review' },
+  published:    { cls: 'badge-published',    label: 'Published' },
+  missing:      { cls: 'badge-missing',      label: 'Missing' },
 };
 
 function fmtDate(iso) {
@@ -31,11 +26,19 @@ function fmtDate(iso) {
   return new Date(iso).toLocaleString('en-GB', { timeZone: TZ, dateStyle: 'medium', timeStyle: 'short' });
 }
 
-function StatusBadge({ status }) {
+function Modal({ title, onClose, children }) {
   return (
-    <span className={`text-xs px-2 py-0.5 rounded font-medium ${STATUS_STYLES[status] || STATUS_STYLES.missing}`}>
-      {STATUS_LABELS[status] || 'Missing'}
-    </span>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(34,21,8,0.2)' }}
+    >
+      <div className="bg-white rounded-2xl w-full max-w-sm p-6 border border-coffee-200">
+        <h2 className="text-base text-coffee-900 mb-4" style={{ fontWeight: 500 }}>
+          {title}
+        </h2>
+        {children}
+      </div>
+    </div>
   );
 }
 
@@ -44,26 +47,23 @@ export default function JournalEntry() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [content, setContent] = useState('');
+  const [data,       setData]       = useState(null);
+  const [loading,    setLoading]    = useState(true);
+  const [content,    setContent]    = useState('');
   const [saveStatus, setSaveStatus] = useState('');
-  const [actioning, setActioning] = useState(false);
+  const [actioning,  setActioning]  = useState(false);
   const [actionError, setActionError] = useState('');
 
-  const [publishModal, setPublishModal] = useState(false);
-
+  const [publishModal,       setPublishModal]       = useState(false);
   const [editPublishedModal, setEditPublishedModal] = useState(false);
-  const [editContent, setEditContent] = useState('');
-  const [editReason, setEditReason] = useState('');
-  const [editSaving, setEditSaving] = useState(false);
-  const [editError, setEditError] = useState('');
-
-  const [deleteModal, setDeleteModal] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [viewVersion, setViewVersion] = useState(null);
+  const [editContent,        setEditContent]        = useState('');
+  const [editReason,         setEditReason]         = useState('');
+  const [editSaving,         setEditSaving]         = useState(false);
+  const [editError,          setEditError]          = useState('');
+  const [deleteModal,        setDeleteModal]        = useState(false);
+  const [deleting,           setDeleting]           = useState(false);
+  const [historyOpen,        setHistoryOpen]        = useState(false);
+  const [viewVersion,        setViewVersion]        = useState(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -79,11 +79,11 @@ export default function JournalEntry() {
 
   useEffect(load, [load]);
 
-  const doc = data?.documents?.[type];
-  const alloc = data?.allocation;
-  const status = doc?.status || 'missing';
+  const doc      = data?.documents?.[type];
+  const alloc    = data?.allocation;
+  const status   = doc?.status || 'missing';
   const versions = doc?.versions || [];
-  const isAdmin = user?.role === 'admin';
+  const isAdmin  = user?.role === 'admin';
   const isEditor = ['admin', 'roaster'].includes(user?.role);
 
   async function handleBlur() {
@@ -95,35 +95,25 @@ export default function JournalEntry() {
   }
 
   async function submitForReview() {
-    setActioning(true);
-    setActionError('');
+    setActioning(true); setActionError('');
     const res = await api.post(`/journal/${doc.id}/submit`, {});
-    if (res.ok) { load(); }
+    if (res.ok) load();
     else { const d = await res.json(); setActionError(d.error || 'Failed.'); }
     setActioning(false);
   }
 
   async function confirmPublish() {
-    setActioning(true);
-    setActionError('');
+    setActioning(true); setActionError('');
     const res = await api.post(`/journal/${doc.id}/publish`, {});
     if (res.ok) { setPublishModal(false); load(); }
     else { const d = await res.json(); setActionError(d.error || 'Failed.'); }
     setActioning(false);
   }
 
-  function openEditPublished() {
-    setEditContent(doc.published_content || '');
-    setEditReason('');
-    setEditError('');
-    setEditPublishedModal(true);
-  }
-
   async function submitEditPublished(e) {
     e.preventDefault();
     if (!editReason.trim()) { setEditError('Edit reason is required.'); return; }
-    setEditSaving(true);
-    setEditError('');
+    setEditSaving(true); setEditError('');
     const res = await api.put(`/journal/${doc.id}/edit-published`, { content: editContent, edit_reason: editReason });
     if (res.ok) { setEditPublishedModal(false); load(); }
     else { const d = await res.json(); setEditError(d.error || 'Failed.'); }
@@ -138,60 +128,80 @@ export default function JournalEntry() {
     navigate('/journal');
   }
 
-  if (loading) return <Layout><div className="p-6 text-coffee-600">Loading…</div></Layout>;
-  if (!data || !alloc) return <Layout><div className="p-6 text-red-600">Entry not found.</div></Layout>;
+  if (loading) return <Layout><div className="px-6 py-6 text-sm text-coffee-400">Loading…</div></Layout>;
+  if (!data || !alloc) return <Layout><div className="px-6 py-6 text-sm" style={{ color: '#A32D2D' }}>Entry not found.</div></Layout>;
+
+  const statusMeta = STATUS_META[status] || STATUS_META.missing;
 
   return (
     <Layout>
-      <div className="max-w-3xl mx-auto p-4 space-y-5">
+      {/* Centered document layout */}
+      <div className="max-w-[720px] mx-auto px-6 py-6">
 
-        {/* Header */}
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-bold text-coffee-900">
-            {alloc.allocation_code} — {DOC_LABELS[type]}
+        {/* Page header */}
+        <div className="mb-5">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="font-mono text-xs text-coffee-400">{alloc.allocation_code}</span>
+            {alloc.process && <ProcessBadge process={alloc.process} />}
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs ${statusMeta.cls}`}>
+              {statusMeta.label}
+            </span>
+          </div>
+          <h1 className="text-xl text-coffee-900" style={{ fontWeight: 500 }}>
+            {DOC_LABELS[type]}
           </h1>
-          <StatusBadge status={status} />
         </div>
 
-        {/* Cross-links panel */}
-        <div className="bg-white border border-coffee-200 rounded-lg p-3">
-          <p className="text-xs text-coffee-500 mb-2 font-medium uppercase tracking-wide">Also in this allocation:</p>
-          <div className="flex flex-wrap gap-2">
-            {DOC_TYPES.map(t => {
-              const d = data.documents?.[t];
-              const s = d?.status || 'missing';
-              const isCurrent = t === type;
-              return (
-                <Link
-                  key={t}
-                  to={`/journal/${allocation_id}/${t}`}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded border text-xs font-medium transition-colors ${
-                    isCurrent
-                      ? 'border-coffee-700 bg-coffee-700 text-white cursor-default pointer-events-none'
-                      : 'border-coffee-200 bg-white text-coffee-700 hover:bg-coffee-50'
-                  }`}
-                >
-                  {DOC_LABELS[t]}
-                  {!isCurrent && <StatusBadge status={s} />}
-                </Link>
-              );
-            })}
-          </div>
+        {/* Tab strip */}
+        <div
+          className="flex gap-0 mb-6 border-b border-coffee-200"
+        >
+          {DOC_TYPES.map(t => {
+            const isActive = t === type;
+            const docStatus = data.documents?.[t]?.status || 'missing';
+            const meta = STATUS_META[docStatus] || STATUS_META.missing;
+            return (
+              <Link
+                key={t}
+                to={`/journal/${allocation_id}/${t}`}
+                className="flex items-center gap-1.5 px-4 py-2.5 text-sm transition-colors duration-150 -mb-px"
+                style={{
+                  color:        isActive ? '#533A24' : '#A8896A',
+                  borderBottom: isActive ? '2px solid #6F5035' : '2px solid transparent',
+                  fontWeight:   isActive ? 500 : 400,
+                }}
+              >
+                {DOC_LABELS[t]}
+                {!isActive && (
+                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-xs ${meta.cls}`}>
+                    {meta.label}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
         </div>
 
         {/* Content area */}
-        <div className="bg-white border border-coffee-200 rounded-lg p-4">
+        <div className="bg-white border border-coffee-200 rounded-xl p-6 mb-5">
           {status === 'missing' && (
-            <p className="text-sm text-coffee-400">No draft has been generated for this document yet.</p>
+            <p className="text-sm text-coffee-400 py-8 text-center">
+              No draft has been generated for this document yet.
+              Go back to the Journal dashboard to generate drafts.
+            </p>
           )}
 
-          {(status === 'draft' || status === 'under_review') && (
+          {(status === 'draft' || status === 'under_review') && isEditor && (
             <>
-              <div className="flex items-center justify-between mb-2">
-                <h2 className="text-sm font-semibold text-coffee-800">Content</h2>
-                <span className={`text-xs transition-opacity ${saveStatus ? 'opacity-100' : 'opacity-0'} ${
-                  saveStatus === 'saved' ? 'text-green-600 font-medium' : 'text-coffee-400'
-                }`}>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs text-coffee-400 uppercase tracking-wide">Content</p>
+                <span
+                  className="text-xs transition-opacity duration-200"
+                  style={{
+                    opacity: saveStatus ? 1 : 0,
+                    color: saveStatus === 'saved' ? '#3B6D11' : '#A8896A',
+                  }}
+                >
                   {saveStatus === 'saving' ? 'Saving…' : 'Saved'}
                 </span>
               </div>
@@ -199,216 +209,234 @@ export default function JournalEntry() {
                 value={content}
                 onChange={e => setContent(e.target.value)}
                 onBlur={handleBlur}
-                rows={20}
-                className="w-full border border-coffee-200 rounded-md px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-coffee-400"
-                placeholder="Enter content…"
+                rows={22}
+                className="w-full border border-coffee-200 rounded-lg px-4 py-3 text-coffee-800 font-mono resize-y focus:border-coffee-500 focus:ring-2 focus:ring-coffee-100"
+                style={{ fontSize: 15, lineHeight: 1.75 }}
+                placeholder="Enter document content…"
               />
             </>
           )}
 
+          {status === 'draft' && !isEditor && (
+            <pre
+              className="whitespace-pre-wrap text-coffee-800 font-mono"
+              style={{ fontSize: 15, lineHeight: 1.75 }}
+            >
+              {doc.draft_content || 'No content yet.'}
+            </pre>
+          )}
+
           {status === 'published' && (
             <>
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-semibold text-coffee-800">Published Content</h2>
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-xs text-coffee-400 uppercase tracking-wide">Published</p>
                 {isAdmin && (
-                  <button
-                    onClick={openEditPublished}
-                    className="px-3 py-1.5 border border-coffee-300 text-coffee-700 rounded text-xs font-semibold hover:bg-coffee-50"
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setEditContent(doc.published_content || '');
+                      setEditReason('');
+                      setEditError('');
+                      setEditPublishedModal(true);
+                    }}
                   >
-                    Edit Published Entry
-                  </button>
+                    Edit
+                  </Button>
                 )}
               </div>
-              <pre className="whitespace-pre-wrap text-sm text-coffee-800 font-mono leading-relaxed bg-coffee-50 rounded-md p-4 overflow-auto">
-                {doc.published_content}
-              </pre>
+              <div
+                className="text-coffee-800"
+                style={{ fontSize: 15, lineHeight: 1.75 }}
+              >
+                <pre className="whitespace-pre-wrap font-sans">
+                  {doc.published_content}
+                </pre>
+              </div>
             </>
           )}
         </div>
 
         {/* Action buttons */}
         {doc?.id && (
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3 mb-5">
             {status === 'draft' && isEditor && (
-              <button
+              <Button
+                variant="primary"
                 onClick={submitForReview}
                 disabled={actioning}
-                className="px-4 py-2 bg-amber-600 text-white rounded-md text-sm font-semibold hover:bg-amber-700 disabled:opacity-50"
+                style={{ background: '#BA7517', color: '#fff' }}
               >
                 {actioning ? 'Submitting…' : 'Submit for Review'}
-              </button>
+              </Button>
             )}
             {status === 'under_review' && isAdmin && (
-              <button
+              <Button
+                variant="primary"
                 onClick={() => { setActionError(''); setPublishModal(true); }}
-                className="px-4 py-2 bg-green-600 text-white rounded-md text-sm font-semibold hover:bg-green-700"
+                style={{ background: '#3B6D11', color: '#fff' }}
               >
                 Publish
-              </button>
+              </Button>
             )}
             {(status === 'draft' || status === 'under_review') && isAdmin && (
-              <button
+              <Button
+                variant="destructive"
                 onClick={() => setDeleteModal(true)}
-                className="px-4 py-2 border border-red-300 text-red-600 rounded-md text-sm font-semibold hover:bg-red-50"
               >
                 Delete Draft
-              </button>
+              </Button>
             )}
-            {actionError && <p className="text-red-600 text-sm">{actionError}</p>}
+            {actionError && (
+              <p className="text-xs" style={{ color: '#A32D2D' }}>{actionError}</p>
+            )}
           </div>
         )}
 
         {/* Version history */}
         {versions.length > 0 && (
-          <div className="bg-white border border-coffee-200 rounded-lg overflow-hidden">
+          <div className="bg-white border border-coffee-200 rounded-xl overflow-hidden">
             <button
               onClick={() => setHistoryOpen(o => !o)}
-              className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-coffee-800 hover:bg-coffee-50 text-left"
+              className="w-full flex items-center justify-between px-5 py-3 text-sm text-coffee-700 transition-colors hover:bg-coffee-50"
+              style={{ fontWeight: 500 }}
             >
-              <span>Edit History ({versions.length} version{versions.length !== 1 ? 's' : ''})</span>
-              <span className="text-coffee-400 text-xs">{historyOpen ? '▲' : '▼'}</span>
+              <span>Edit History ({versions.length})</span>
+              {historyOpen
+                ? <ChevronUp size={14} className="text-coffee-400" />
+                : <ChevronDown size={14} className="text-coffee-400" />
+              }
             </button>
             {historyOpen && (
-              <ul className="border-t border-coffee-100 divide-y divide-coffee-50">
+              <div className="border-t border-coffee-100 divide-y divide-coffee-50">
                 {versions.map((v, i) => (
-                  <li key={v.id || i} className="flex flex-wrap items-center gap-2 px-4 py-2.5 text-xs text-coffee-700">
-                    <span className="font-semibold text-coffee-500 shrink-0">v{v.version_number}</span>
-                    <span className="font-medium shrink-0">{v.edited_by_name}</span>
-                    <span className="text-coffee-400 shrink-0">{fmtDate(v.edited_at)}</span>
-                    <span className="text-coffee-500 italic truncate flex-1 min-w-0">{v.edit_reason}</span>
-                    <button
-                      onClick={() => setViewVersion(v)}
-                      className="px-2 py-0.5 bg-coffee-100 text-coffee-700 rounded hover:bg-coffee-200 shrink-0"
-                    >
+                  <div key={v.id || i} className="flex items-center gap-3 px-5 py-3 text-xs text-coffee-600">
+                    <span className="text-coffee-300 w-6 flex-shrink-0">v{v.version_number}</span>
+                    <span style={{ fontWeight: 500 }}>{v.edited_by_name}</span>
+                    <span className="text-coffee-400">{fmtDate(v.edited_at)}</span>
+                    <span className="text-coffee-400 italic truncate flex-1">{v.edit_reason}</span>
+                    <Button variant="ghost" size="sm" onClick={() => setViewVersion(v)}>
                       View
-                    </button>
-                  </li>
+                    </Button>
+                  </div>
                 ))}
-              </ul>
+              </div>
             )}
           </div>
         )}
       </div>
 
-      {/* Publish confirmation modal */}
+      {/* Publish modal */}
       {publishModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
-            <h2 className="text-lg font-bold text-coffee-900 mb-2">Publish Entry</h2>
-            <p className="text-sm text-coffee-600 mb-5">Publishing is permanent. Proceed?</p>
-            {actionError && <p className="text-red-600 text-sm mb-3">{actionError}</p>}
-            <div className="flex gap-3">
-              <button
-                onClick={confirmPublish}
-                disabled={actioning}
-                className="flex-1 py-2 bg-green-600 text-white rounded font-semibold text-sm disabled:opacity-50"
-              >
-                {actioning ? 'Publishing…' : 'Publish'}
-              </button>
-              <button
-                onClick={() => setPublishModal(false)}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded font-semibold text-sm"
-              >
-                Cancel
-              </button>
-            </div>
+        <Modal title="Publish Entry" onClose={() => setPublishModal(false)}>
+          <p className="text-sm text-coffee-500 mb-5">
+            Publishing is permanent and enters the archive. Proceed?
+          </p>
+          {actionError && <p className="text-xs mb-3" style={{ color: '#A32D2D' }}>{actionError}</p>}
+          <div className="flex gap-3">
+            <Button
+              variant="primary"
+              onClick={confirmPublish}
+              disabled={actioning}
+              className="flex-1 justify-center"
+              style={{ background: '#3B6D11', color: '#fff' }}
+            >
+              {actioning ? 'Publishing…' : 'Publish'}
+            </Button>
+            <Button variant="secondary" onClick={() => setPublishModal(false)}>Cancel</Button>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* Edit published modal */}
       {editPublishedModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl p-6">
-            <h2 className="text-lg font-bold text-coffee-900 mb-4">Edit Published Entry</h2>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(34,21,8,0.2)' }}>
+          <div className="bg-white rounded-2xl w-full max-w-2xl p-6 border border-coffee-200">
+            <h2 className="text-base text-coffee-900 mb-4" style={{ fontWeight: 500 }}>
+              Edit Published Entry
+            </h2>
             <form onSubmit={submitEditPublished} className="space-y-4">
               <textarea
                 value={editContent}
                 onChange={e => setEditContent(e.target.value)}
                 rows={14}
-                className="w-full border border-coffee-300 rounded-md px-3 py-2 text-sm font-mono resize-y"
+                className="w-full border border-coffee-200 rounded-lg px-4 py-3 text-coffee-800 font-mono resize-y focus:border-coffee-500 focus:ring-2 focus:ring-coffee-100"
+                style={{ fontSize: 14, lineHeight: 1.7 }}
               />
-              <div>
-                <label className="block text-sm font-medium text-coffee-800 mb-1">
-                  Reason for Edit <span className="text-red-500">*</span>
+              <div className="flex flex-col gap-1">
+                <label className="text-sm text-coffee-600" style={{ fontWeight: 500 }}>
+                  Reason for Edit
                 </label>
                 <input
                   value={editReason}
                   onChange={e => setEditReason(e.target.value)}
-                  className="w-full border border-coffee-300 rounded-md px-3 py-2 text-sm"
-                  placeholder="Describe what was corrected or updated…"
+                  className="h-9 px-3 text-sm border border-coffee-200 rounded-lg focus:border-coffee-500 focus:ring-2 focus:ring-coffee-100"
+                  placeholder="Describe what was corrected…"
                   required
                 />
               </div>
-              {editError && <p className="text-red-600 text-sm">{editError}</p>}
+              {editError && <p className="text-xs" style={{ color: '#A32D2D' }}>{editError}</p>}
               <div className="flex gap-3">
-                <button
-                  type="submit"
-                  disabled={editSaving}
-                  className="flex-1 py-2 bg-coffee-700 text-white rounded font-semibold text-sm disabled:opacity-50"
-                >
+                <Button type="submit" disabled={editSaving} className="flex-1 justify-center">
                   {editSaving ? 'Saving…' : 'Save Edit'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setEditPublishedModal(false)}
-                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded font-semibold text-sm"
-                >
+                </Button>
+                <Button type="button" variant="secondary" onClick={() => setEditPublishedModal(false)}>
                   Cancel
-                </button>
+                </Button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* Delete confirmation modal */}
+      {/* Delete modal */}
       {deleteModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
-            <h2 className="text-lg font-bold text-coffee-900 mb-2">Delete Draft</h2>
-            <p className="text-sm text-coffee-600 mb-5">This will permanently delete the draft. Are you sure?</p>
-            <div className="flex gap-3">
-              <button
-                onClick={deleteDraft}
-                disabled={deleting}
-                className="flex-1 py-2 bg-red-600 text-white rounded font-semibold text-sm disabled:opacity-50"
-              >
-                {deleting ? 'Deleting…' : 'Delete'}
-              </button>
-              <button
-                onClick={() => setDeleteModal(false)}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded font-semibold text-sm"
-              >
-                Cancel
-              </button>
-            </div>
+        <Modal title="Delete Draft" onClose={() => setDeleteModal(false)}>
+          <p className="text-sm text-coffee-500 mb-5">
+            This will permanently delete the draft. Are you sure?
+          </p>
+          <div className="flex gap-3">
+            <Button
+              variant="destructive"
+              onClick={deleteDraft}
+              disabled={deleting}
+              className="flex-1 justify-center"
+            >
+              {deleting ? 'Deleting…' : 'Delete'}
+            </Button>
+            <Button variant="secondary" onClick={() => setDeleteModal(false)}>Cancel</Button>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* View version modal */}
       {viewVersion && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl p-6">
-            <div className="flex items-start justify-between mb-1">
-              <h2 className="text-lg font-bold text-coffee-900">Version {viewVersion.version_number}</h2>
-              <span className="text-xs text-coffee-500 text-right">
-                {viewVersion.edited_by_name}<br />{fmtDate(viewVersion.edited_at)}
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(34,21,8,0.2)' }}>
+          <div className="bg-white rounded-2xl w-full max-w-2xl p-6 border border-coffee-200">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-base text-coffee-900" style={{ fontWeight: 500 }}>
+                Version {viewVersion.version_number}
+              </h2>
+              <span className="text-xs text-coffee-400 text-right">
+                {viewVersion.edited_by_name} · {fmtDate(viewVersion.edited_at)}
               </span>
             </div>
             {viewVersion.edit_reason && (
-              <p className="text-xs text-coffee-500 italic mb-3">Reason: {viewVersion.edit_reason}</p>
+              <p className="text-xs text-coffee-400 italic mb-3">
+                "{viewVersion.edit_reason}"
+              </p>
             )}
-            <pre className="whitespace-pre-wrap text-sm text-coffee-800 font-mono bg-coffee-50 rounded-md p-4 max-h-96 overflow-y-auto">
+            <pre
+              className="whitespace-pre-wrap text-coffee-800 font-mono rounded-xl p-4 max-h-96 overflow-y-auto"
+              style={{ background: '#FAF6F0', fontSize: 13, lineHeight: 1.7 }}
+            >
               {viewVersion.content}
             </pre>
-            <button
-              onClick={() => setViewVersion(null)}
-              className="mt-4 px-4 py-2 bg-gray-200 text-gray-700 rounded font-semibold text-sm"
-            >
+            <Button variant="secondary" onClick={() => setViewVersion(null)} className="mt-4">
               Close
-            </button>
+            </Button>
           </div>
         </div>
       )}

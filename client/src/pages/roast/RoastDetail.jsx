@@ -4,6 +4,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import Layout from '../../components/Layout';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
+import { Button, StatusBadge } from '../../components/ui';
 
 const TZ = 'Asia/Vientiane';
 
@@ -12,22 +13,31 @@ function fmtMSS(sec) {
   const s = sec % 60;
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
-
 function fmtDate(iso) {
   if (!iso) return '—';
   return new Date(iso).toLocaleString('en-GB', { timeZone: TZ, dateStyle: 'medium', timeStyle: 'short' });
 }
-
 function kgLabel(g) {
   if (g == null) return '—';
   return (g / 1000).toFixed(2) + ' kg';
 }
 
-const STATUS_COLORS = {
-  in_progress:        'bg-blue-100 text-blue-700',
-  completed:          'bg-amber-100 text-amber-700',
-  approved_for_bagging: 'bg-green-100 text-green-700',
-  rejected:           'bg-red-100 text-red-700',
+const STATUS_BADGE_MAP = {
+  in_progress:           { status: 'draft',        label: 'In Progress' },
+  completed:             { status: 'under_review',  label: 'Completed' },
+  approved_for_bagging:  { status: 'active',        label: 'Approved for Bagging' },
+  rejected:              { status: 'missing',       label: 'Rejected' },
+};
+
+const CustomTooltip = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="px-3 py-2 rounded-lg border text-xs"
+      style={{ background: '#FDFAF6', borderColor: '#E0D0BC', color: '#533A24' }}>
+      <p>{fmtMSS(label)}</p>
+      <p style={{ fontWeight: 500 }}>{payload[0]?.value?.toFixed(1)}°C</p>
+    </div>
+  );
 };
 
 export default function RoastDetail() {
@@ -35,11 +45,11 @@ export default function RoastDetail() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const [session, setSession] = useState(null);
-  const [notes,   setNotes]   = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [confirming, setConfirming] = useState(null); // 'approve' | 'reject'
-  const [saving, setSaving]   = useState(false);
+  const [session,    setSession]    = useState(null);
+  const [notes,      setNotes]      = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [confirming, setConfirming] = useState(null);
+  const [saving,     setSaving]     = useState(false);
 
   function load() {
     setLoading(true);
@@ -48,7 +58,6 @@ export default function RoastDetail() {
       .then(d => { setSession(d.session); setNotes(d.notes || []); })
       .finally(() => setLoading(false));
   }
-
   useEffect(load, [id]);
 
   async function updateStatus(status) {
@@ -59,8 +68,8 @@ export default function RoastDetail() {
     setSaving(false);
   }
 
-  if (loading) return <Layout><div className="p-6 text-coffee-600">Loading…</div></Layout>;
-  if (!session) return <Layout><div className="p-6 text-red-600">Session not found.</div></Layout>;
+  if (loading) return <Layout><div className="px-6 py-6 text-sm text-coffee-400">Loading…</div></Layout>;
+  if (!session) return <Layout><div className="px-6 py-6 text-sm" style={{ color: '#A32D2D' }}>Session not found.</div></Layout>;
 
   const roastLossPct = session.roasted_weight_out_g
     ? (((session.green_weight_in_g - session.roasted_weight_out_g) / session.green_weight_in_g) * 100).toFixed(1)
@@ -71,56 +80,87 @@ export default function RoastDetail() {
     : null;
 
   const curve = Array.isArray(session.temperature_curve) ? session.temperature_curve : [];
+  const badgeMeta = STATUS_BADGE_MAP[session.status] || { status: 'draft', label: session.status };
+
+  const stats = [
+    ['Started',     fmtDate(session.started_at)],
+    ['Ended',       fmtDate(session.ended_at)],
+    ['Duration',    durationSec != null ? fmtMSS(durationSec) : '—'],
+    ['Green In',    kgLabel(session.green_weight_in_g)],
+    ['Roasted Out', kgLabel(session.roasted_weight_out_g)],
+    ['Roast Loss',  roastLossPct ? `${roastLossPct}%` : '—'],
+    ['Charge Temp', session.charge_temp_c ? `${session.charge_temp_c}°C` : '—'],
+    ['Eject Temp',  session.eject_temp_c  ? `${session.eject_temp_c}°C`  : '—'],
+    ['DTR',         session.dtr ? `${session.dtr}%` : '—'],
+  ];
 
   return (
     <Layout>
-      <div className="max-w-3xl mx-auto p-4 space-y-5">
+      <div className="max-w-3xl mx-auto px-6 py-6 space-y-5">
         {/* Header */}
         <div className="flex items-center gap-3">
-          <span className="font-mono text-3xl font-bold text-coffee-900">{session.batch_code}</span>
-          <span className={`text-xs px-2 py-1 rounded font-bold uppercase ${session.is_development ? 'bg-gray-200 text-gray-700' : 'bg-blue-100 text-blue-700'}`}>
+          <span className="font-mono text-2xl text-coffee-900" style={{ fontWeight: 500 }}>
+            {session.batch_code}
+          </span>
+          <span
+            className="text-xs px-2 py-0.5 rounded-full"
+            style={{
+              background: session.is_development ? '#F1EFE8' : '#E6F1FB',
+              color:      session.is_development ? '#888780' : '#185FA5',
+            }}
+          >
             {session.is_development ? 'DEV' : 'PROD'}
           </span>
+          <StatusBadge {...badgeMeta} />
         </div>
 
         {/* Variance warning */}
         {session.variance_flagged && (
-          <div className="bg-amber-50 border border-amber-300 text-amber-800 rounded-md p-3 text-sm">
+          <div className="px-4 py-3 rounded-xl text-sm" style={{ background: '#FAEEDA', color: '#BA7517' }}>
             Eject temp deviated from profile. Actual: {session.eject_temp_c}°C
           </div>
         )}
 
         {/* Stats grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[
-            ['Started',      fmtDate(session.started_at)],
-            ['Ended',        fmtDate(session.ended_at)],
-            ['Duration',     durationSec != null ? fmtMSS(durationSec) : '—'],
-            ['Green In',     kgLabel(session.green_weight_in_g)],
-            ['Roasted Out',  kgLabel(session.roasted_weight_out_g)],
-            ['Roast Loss',   roastLossPct ? `${roastLossPct}%` : '—'],
-            ['Charge Temp',  session.charge_temp_c ? `${session.charge_temp_c}°C` : '—'],
-            ['Eject Temp',   session.eject_temp_c  ? `${session.eject_temp_c}°C`  : '—'],
-            ['DTR',          session.dtr ? `${session.dtr}%` : '—'],
-          ].map(([label, value]) => (
-            <div key={label} className="bg-white border border-coffee-200 rounded-lg p-3">
-              <div className="text-xs text-coffee-500">{label}</div>
-              <div className="text-sm font-semibold text-coffee-900 mt-0.5">{value}</div>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          {stats.map(([label, value]) => (
+            <div key={label} className="bg-white border border-coffee-200 rounded-xl p-4">
+              <p className="text-xs text-coffee-400 uppercase tracking-wide mb-1">{label}</p>
+              <p className="text-sm text-coffee-900" style={{ fontWeight: 500 }}>{value}</p>
             </div>
           ))}
         </div>
 
         {/* Curve chart */}
         {curve.length > 0 && (
-          <div className="bg-white border border-coffee-200 rounded-lg p-4">
-            <h2 className="text-sm font-semibold text-coffee-700 mb-3">Temperature Curve</h2>
+          <div className="bg-white border border-coffee-200 rounded-xl p-5">
+            <p className="text-xs text-coffee-400 uppercase tracking-wide mb-4">Temperature Curve</p>
             <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={curve}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0e6d8" />
-                <XAxis dataKey="t" tickFormatter={fmtMSS} tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 10 }} unit="°" />
-                <Tooltip formatter={v => [`${v}°C`, 'Temp']} labelFormatter={fmtMSS} />
-                <Line type="monotone" dataKey="temp" stroke="#2563eb" dot={false} strokeWidth={2} />
+              <LineChart data={curve} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
+                <CartesianGrid strokeDasharray="0" stroke="#F2EAE0" />
+                <XAxis
+                  dataKey="t"
+                  tickFormatter={fmtMSS}
+                  tick={{ fontSize: 11, fill: '#A8896A' }}
+                  axisLine={{ stroke: '#E0D0BC' }}
+                  tickLine={false}
+                />
+                <YAxis
+                  tick={{ fontSize: 11, fill: '#A8896A' }}
+                  axisLine={false}
+                  tickLine={false}
+                  unit="°"
+                  width={36}
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Line
+                  type="monotone"
+                  dataKey="temp"
+                  stroke="#EF9F27"
+                  dot={false}
+                  strokeWidth={2}
+                  isAnimationActive={false}
+                />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -128,12 +168,12 @@ export default function RoastDetail() {
 
         {/* Notes */}
         {notes.length > 0 && (
-          <div className="bg-white border border-coffee-200 rounded-lg p-4">
-            <h2 className="text-sm font-semibold text-coffee-700 mb-3">Notes</h2>
+          <div className="bg-white border border-coffee-200 rounded-xl p-5">
+            <p className="text-xs text-coffee-400 uppercase tracking-wide mb-3">Notes</p>
             <ul className="space-y-2">
               {notes.map(n => (
                 <li key={n.id} className="text-sm text-coffee-800">
-                  <span className="font-mono text-coffee-500 mr-2">{fmtMSS(n.roast_position_s)}</span>
+                  <span className="font-mono text-coffee-400 mr-2">{fmtMSS(n.roast_position_s)}</span>
                   {n.note_text}
                 </li>
               ))}
@@ -141,57 +181,59 @@ export default function RoastDetail() {
           </div>
         )}
 
-        {/* Status */}
-        <div className="bg-white border border-coffee-200 rounded-lg p-4">
-          <h2 className="text-sm font-semibold text-coffee-700 mb-3">Status</h2>
-          <span className={`inline-block text-xs px-2 py-1 rounded font-medium capitalize ${STATUS_COLORS[session.status] || ''}`}>
-            {session.status.replace(/_/g, ' ')}
-          </span>
-
-          {session.status === 'completed' && ['admin', 'roaster'].includes(user?.role) && (
-            <div className="flex gap-3 mt-4">
-              <button
+        {/* Approve / Reject actions */}
+        {session.status === 'completed' && ['admin', 'roaster'].includes(user?.role) && (
+          <div className="bg-white border border-coffee-200 rounded-xl p-5">
+            <p className="text-xs text-coffee-400 uppercase tracking-wide mb-3">Review</p>
+            <div className="flex gap-3">
+              <Button
+                variant="primary"
                 onClick={() => setConfirming('approve')}
-                className="px-4 py-2 bg-green-600 text-white rounded font-semibold text-sm hover:bg-green-700"
+                style={{ background: '#3B6D11' }}
               >
                 Approve for Bagging
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="destructive"
                 onClick={() => setConfirming('reject')}
-                className="px-4 py-2 bg-red-600 text-white rounded font-semibold text-sm hover:bg-red-700"
               >
                 Reject
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Confirmation dialog */}
-        {confirming && (
-          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6">
-              <h3 className="text-lg font-bold text-coffee-900 mb-2">Confirm</h3>
-              <p className="text-sm text-coffee-700 mb-5">
-                {confirming === 'approve'
-                  ? 'Approve this session for bagging?'
-                  : 'Reject this session? This action marks it as rejected.'}
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => updateStatus(confirming === 'approve' ? 'approved_for_bagging' : 'rejected')}
-                  disabled={saving}
-                  className={`flex-1 py-2 text-white rounded font-semibold text-sm ${confirming === 'approve' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}
-                >
-                  {saving ? 'Saving…' : 'Confirm'}
-                </button>
-                <button onClick={() => setConfirming(null)} className="px-4 py-2 bg-gray-200 rounded font-semibold text-sm">
-                  Cancel
-                </button>
-              </div>
+              </Button>
             </div>
           </div>
         )}
       </div>
+
+      {/* Confirmation modal */}
+      {confirming && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(34,21,8,0.2)' }}
+        >
+          <div className="bg-white rounded-2xl border border-coffee-200 w-full max-w-sm p-6">
+            <h3 className="text-base text-coffee-900 mb-2" style={{ fontWeight: 500 }}>Confirm</h3>
+            <p className="text-sm text-coffee-600 mb-5">
+              {confirming === 'approve'
+                ? 'Approve this session for bagging?'
+                : 'Reject this session? This marks it as rejected.'}
+            </p>
+            <div className="flex gap-3">
+              <Button
+                onClick={() => updateStatus(confirming === 'approve' ? 'approved_for_bagging' : 'rejected')}
+                disabled={saving}
+                className="flex-1 justify-center"
+                style={confirming === 'approve' ? { background: '#3B6D11', color: '#fff' } : {}}
+                variant={confirming === 'approve' ? 'primary' : 'destructive'}
+              >
+                {saving ? 'Saving…' : 'Confirm'}
+              </Button>
+              <Button variant="secondary" onClick={() => setConfirming(null)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }

@@ -5,7 +5,7 @@ const pool = new Pool({
   ssl: process.env.DATABASE_URL?.includes('supabase') ? { rejectUnauthorized: false } : false,
   max: 20,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: 10000,
 });
 
 // All ops tables live in the 'ops' schema

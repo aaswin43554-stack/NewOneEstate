@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../../components/Layout';
 import { api } from '../../lib/api';
+import { Button, FormInput, FormSelect, FormTextarea, PageHeader } from '../../components/ui';
 
 const SEGMENTS = ['Laos', 'Thailand', 'Malaysia', 'Singapore', 'Other'];
 const STATUSES = ['prospect', 'active_buyer', 'private_list', 'trade_account'];
@@ -13,13 +14,9 @@ function statusLabel(s) {
 }
 
 const EMPTY = {
-  name: '',
-  primary_contact_method: '',
-  location: '',
-  market_segment: 'Laos',
-  preferred_channel: '',
-  status: 'prospect',
-  personal_notes: '',
+  name: '', primary_contact_method: '', location: '',
+  market_segment: 'Laos', preferred_channel: '',
+  status: 'prospect', personal_notes: '',
 };
 
 export default function ContactForm() {
@@ -27,10 +24,10 @@ export default function ContactForm() {
   const navigate = useNavigate();
   const isEdit = Boolean(id);
 
-  const [form, setForm] = useState(EMPTY);
+  const [form,    setForm]    = useState(EMPTY);
   const [loading, setLoading] = useState(isEdit);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  const [saving,  setSaving]  = useState(false);
+  const [error,   setError]   = useState('');
 
   useEffect(() => {
     if (!isEdit) return;
@@ -73,115 +70,82 @@ export default function ContactForm() {
     }
   }
 
-  if (loading) return <Layout><div className="p-6 text-coffee-600">Loading…</div></Layout>;
+  if (loading) return <Layout><div className="px-6 py-6 text-sm text-coffee-400">Loading…</div></Layout>;
 
   return (
     <Layout>
-      <div className="max-w-2xl mx-auto p-4">
-        <h1 className="text-2xl font-bold text-coffee-900 mb-6">
-          {isEdit ? 'Edit Contact' : 'New Contact'}
-        </h1>
+      <div className="max-w-lg mx-auto px-6 py-6">
+        <PageHeader title={isEdit ? 'Edit Contact' : 'New Contact'} />
 
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div>
-            <label className="block text-sm font-medium text-coffee-800 mb-1">
-              Name <span className="text-red-500">*</span>
-            </label>
-            <input
-              value={form.name}
-              onChange={field('name')}
-              className="w-full border border-coffee-300 rounded-md px-3 py-2 text-sm"
-              required
-            />
-          </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <FormInput
+            label="Name"
+            value={form.name}
+            onChange={field('name')}
+            required
+          />
 
-          <div>
-            <label className="block text-sm font-medium text-coffee-800 mb-1">
-              Primary Contact Method <span className="text-red-500">*</span>
-            </label>
-            <input
-              value={form.primary_contact_method}
-              onChange={field('primary_contact_method')}
-              placeholder="WhatsApp number, @handle, email…"
-              className="w-full border border-coffee-300 rounded-md px-3 py-2 text-sm"
-              required
-            />
-          </div>
+          <FormInput
+            label="Primary Contact Method"
+            value={form.primary_contact_method}
+            onChange={field('primary_contact_method')}
+            placeholder="WhatsApp number, @handle, email…"
+            required
+          />
 
-          <div>
-            <label className="block text-sm font-medium text-coffee-800 mb-1">Location</label>
-            <input
-              value={form.location}
-              onChange={field('location')}
-              className="w-full border border-coffee-300 rounded-md px-3 py-2 text-sm"
-            />
-          </div>
+          <FormInput
+            label="Location"
+            value={form.location}
+            onChange={field('location')}
+          />
 
-          <div>
-            <label className="block text-sm font-medium text-coffee-800 mb-1">
-              Market Segment <span className="text-red-500">*</span>
-            </label>
-            <select
-              value={form.market_segment}
-              onChange={field('market_segment')}
-              className="w-full border border-coffee-300 rounded-md px-3 py-2 text-sm"
-              required
-            >
-              {SEGMENTS.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
+          <FormSelect
+            label="Market Segment"
+            value={form.market_segment}
+            onChange={field('market_segment')}
+            required
+          >
+            {SEGMENTS.map(s => <option key={s} value={s}>{s}</option>)}
+          </FormSelect>
 
-          <div>
-            <label className="block text-sm font-medium text-coffee-800 mb-1">Preferred Channel</label>
-            <input
-              value={form.preferred_channel}
-              onChange={field('preferred_channel')}
-              placeholder="e.g. WhatsApp, Instagram, email…"
-              className="w-full border border-coffee-300 rounded-md px-3 py-2 text-sm"
-            />
-          </div>
+          <FormInput
+            label="Preferred Channel"
+            value={form.preferred_channel}
+            onChange={field('preferred_channel')}
+            placeholder="e.g. WhatsApp, Instagram, email…"
+          />
 
-          <div>
-            <label className="block text-sm font-medium text-coffee-800 mb-1">
-              Status <span className="text-red-500">*</span>
-            </label>
-            <select
-              value={form.status}
-              onChange={field('status')}
-              className="w-full border border-coffee-300 rounded-md px-3 py-2 text-sm"
-              required
-            >
-              {STATUSES.map(s => <option key={s} value={s}>{statusLabel(s)}</option>)}
-            </select>
-          </div>
+          <FormSelect
+            label="Status"
+            value={form.status}
+            onChange={field('status')}
+            required
+          >
+            {STATUSES.map(s => <option key={s} value={s}>{statusLabel(s)}</option>)}
+          </FormSelect>
 
-          <div>
-            <label className="block text-sm font-medium text-coffee-800 mb-1">Personal Notes</label>
-            <textarea
-              value={form.personal_notes}
-              onChange={field('personal_notes')}
-              rows={6}
-              className="w-full border border-coffee-300 rounded-md px-3 py-2 text-sm resize-y"
-            />
-          </div>
+          <FormTextarea
+            label="Personal Notes"
+            value={form.personal_notes}
+            onChange={field('personal_notes')}
+            rows={5}
+          />
 
-          {error && <p className="text-red-600 text-sm">{error}</p>}
+          {error && (
+            <p className="text-xs" style={{ color: '#A32D2D' }}>{error}</p>
+          )}
 
-          <div className="flex gap-3">
-            <button
-              type="submit"
-              disabled={saving}
-              className="flex-1 py-3 bg-coffee-700 text-white rounded-md font-semibold hover:bg-coffee-800 disabled:opacity-50"
-            >
+          <div className="flex gap-3 pt-1">
+            <Button type="submit" disabled={saving} className="flex-1 justify-center" size="lg">
               {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Contact'}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              variant="secondary"
               onClick={() => navigate(isEdit ? `/contacts/${id}` : '/contacts')}
-              className="px-5 py-3 bg-gray-200 text-gray-700 rounded-md font-semibold hover:bg-gray-300"
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </form>
       </div>

@@ -2,8 +2,36 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../../components/Layout';
 import { api } from '../../lib/api';
+import { PageHeader, Button, ProcessBadge, StatusBadge } from '../../components/ui';
 
-const STATES = ['upcoming', 'open_for_requests', 'closed', 'roasting_in_progress', 'resting', 'dispatched', 'archived'];
+// Map internal states to three Kanban columns
+const KANBAN_COLUMNS = [
+  {
+    key: 'pending',
+    label: 'Pending',
+    states: ['upcoming', 'open_for_requests', 'closed'],
+  },
+  {
+    key: 'in_progress',
+    label: 'In Progress',
+    states: ['roasting_in_progress', 'resting'],
+  },
+  {
+    key: 'dispatched',
+    label: 'Dispatched',
+    states: ['dispatched', 'archived'],
+  },
+];
+
+const STATE_TO_STATUS = {
+  upcoming:             'draft',
+  open_for_requests:    'published',
+  closed:               'under_review',
+  roasting_in_progress: 'under_review',
+  resting:              'under_review',
+  dispatched:           'published',
+  archived:             'draft',
+};
 const STATE_LABELS = {
   upcoming:             'Upcoming',
   open_for_requests:    'Open',
@@ -14,49 +42,119 @@ const STATE_LABELS = {
   archived:             'Archived',
 };
 
-const PROCESS_COLORS = {
-  Washed:    'bg-blue-100 text-blue-700',
-  Honey:     'bg-amber-100 text-amber-700',
-  Natural:   'bg-green-100 text-green-700',
-  Anaerobic: 'bg-purple-100 text-purple-700',
-};
-
 function AllocationCard({ alloc, onClick }) {
   const pct = alloc.projected_bags > 0
     ? Math.min(100, Math.round((alloc.confirmed_bags / alloc.projected_bags) * 100))
     : 0;
+
+  const progressColor =
+    pct >= 100 ? '#A32D2D'
+    : pct >= 80 ? '#BA7517'
+    : '#3B6D11';
+
   return (
     <div
       onClick={onClick}
-      className="bg-white border border-coffee-200 rounded-lg p-3 cursor-pointer hover:shadow-md transition-shadow"
+      className="bg-white border border-coffee-200 rounded-[10px] p-4 cursor-pointer transition-colors duration-150 hover:border-coffee-300"
     >
-      <div className="flex items-start justify-between mb-1">
-        <span className="font-bold text-coffee-900">{alloc.allocation_code}</span>
-        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${PROCESS_COLORS[alloc.process] || ''}`}>
-          {alloc.process}
+      {/* Header row */}
+      <div className="flex items-start justify-between mb-2">
+        <span className="text-sm text-coffee-900" style={{ fontWeight: 500 }}>
+          {alloc.allocation_code}
         </span>
+        <ProcessBadge process={alloc.process} />
       </div>
-      <div className="text-xs text-coffee-500 mb-2">{alloc.harvest_year}</div>
-      <div className="text-xs text-coffee-600 mb-1">
-        {alloc.confirmed_bags} / {alloc.projected_bags} bags
-      </div>
-      <div className="w-full h-1.5 bg-coffee-100 rounded-full overflow-hidden mb-1">
-        <div
-          className={`h-full rounded-full transition-all ${pct >= 100 ? 'bg-red-500' : pct >= 90 ? 'bg-amber-400' : 'bg-green-500'}`}
-          style={{ width: `${pct}%` }}
+
+      {/* State badge */}
+      <div className="mb-3">
+        <StatusBadge
+          status={STATE_TO_STATUS[alloc.state] || 'draft'}
+          label={STATE_LABELS[alloc.state] || alloc.state}
         />
       </div>
-      {alloc.dispatch_date && (
-        <div className="text-xs text-coffee-400">Dispatch: {alloc.dispatch_date}</div>
+
+      {/* Lot pill */}
+      {alloc.lot_code && (
+        <div className="mb-2">
+          <span
+            className="inline-block px-2 py-0.5 rounded-full text-xs text-coffee-600"
+            style={{ background: '#F2EAE0', fontSize: 11 }}
+          >
+            {alloc.lot_code}
+          </span>
+        </div>
       )}
+
+      {/* Bag count */}
+      <p className="text-xs text-coffee-400 mb-2">
+        {alloc.confirmed_bags ?? 0} / {alloc.projected_bags ?? 0} bags
+      </p>
+
+      {/* Progress bar */}
+      <div
+        className="w-full rounded-full overflow-hidden mb-2"
+        style={{ height: 3, background: '#F2EAE0' }}
+      >
+        <div
+          className="h-full rounded-full transition-all"
+          style={{ width: `${pct}%`, background: progressColor }}
+        />
+      </div>
+
+      {/* Dispatch date */}
+      {alloc.dispatch_date && (
+        <p className="text-xs text-coffee-300">
+          Dispatch: {alloc.dispatch_date}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function KanbanColumn({ column, allocations, onCardClick }) {
+  return (
+    <div className="flex flex-col min-h-[200px]">
+      {/* Column header */}
+      <div
+        className="flex items-center justify-between px-3 py-2 rounded-xl mb-3"
+        style={{ background: '#F2EAE0' }}
+      >
+        <span className="text-xs text-coffee-600 uppercase tracking-wide" style={{ fontWeight: 500 }}>
+          {column.label}
+        </span>
+        <span
+          className="inline-flex items-center justify-center rounded-full text-xs text-coffee-500"
+          style={{ width: 20, height: 20, background: '#E0D0BC' }}
+        >
+          {allocations.length}
+        </span>
+      </div>
+
+      {/* Cards */}
+      <div className="space-y-2 flex-1">
+        {allocations.length === 0 ? (
+          <div
+            className="border border-dashed border-coffee-200 rounded-[10px] p-4 text-center text-xs text-coffee-300"
+          >
+            Empty
+          </div>
+        ) : (
+          allocations.map(a => (
+            <AllocationCard
+              key={a.id}
+              alloc={a}
+              onClick={() => onCardClick(a)}
+            />
+          ))
+        )}
+      </div>
     </div>
   );
 }
 
 export default function AllocationDashboard() {
   const [allocations, setAllocations] = useState([]);
-  const [activeState, setActiveState] = useState(null); // null = kanban, string = filtered tab
-  const [loading, setLoading] = useState(true);
+  const [loading,     setLoading]     = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -66,70 +164,64 @@ export default function AllocationDashboard() {
       .finally(() => setLoading(false));
   }, []);
 
-  const grouped = STATES.reduce((acc, s) => {
-    acc[s] = allocations.filter(a => a.state === s);
+  // Group by kanban column
+  const grouped = KANBAN_COLUMNS.reduce((acc, col) => {
+    acc[col.key] = allocations.filter(a => col.states.includes(a.state));
     return acc;
   }, {});
 
   return (
     <Layout>
-      <div className="p-4">
-        <div className="flex items-center justify-between mb-5">
-          <h1 className="text-2xl font-bold text-coffee-900">Allocations</h1>
-          <button
-            onClick={() => navigate('/allocations/new')}
-            className="px-4 py-2 bg-coffee-700 text-white rounded-md text-sm font-semibold hover:bg-coffee-800"
-          >
-            + New Allocation
-          </button>
-        </div>
+      <div className="px-6 py-6">
+        <PageHeader
+          title="Allocations"
+          subtitle={`${allocations.length} total`}
+          actions={
+            <Button variant="primary" onClick={() => navigate('/allocations/new')}>
+              + New Allocation
+            </Button>
+          }
+        />
 
         {loading ? (
-          <p className="text-coffee-500">Loading…</p>
+          <p className="text-sm text-coffee-400">Loading…</p>
         ) : (
           <>
-            {/* Mobile: tab filter + list */}
-            <div className="md:hidden">
-              <div className="flex overflow-x-auto gap-2 mb-4 pb-1">
-                <button
-                  onClick={() => setActiveState(null)}
-                  className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
-                    activeState === null ? 'bg-coffee-700 text-white border-coffee-700' : 'border-coffee-300 text-coffee-600'
-                  }`}
-                >
-                  All
-                </button>
-                {STATES.map(s => (
-                  <button
-                    key={s}
-                    onClick={() => setActiveState(s)}
-                    className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
-                      activeState === s ? 'bg-coffee-700 text-white border-coffee-700' : 'border-coffee-300 text-coffee-600'
-                    }`}
-                  >
-                    {STATE_LABELS[s]}
-                  </button>
-                ))}
-              </div>
-              <div className="space-y-3">
-                {(activeState ? grouped[activeState] : allocations).map(a => (
-                  <AllocationCard key={a.id} alloc={a} onClick={() => navigate(`/allocations/${a.id}`)} />
-                ))}
-              </div>
+            {/* Desktop: 3-column Kanban */}
+            <div className="hidden md:grid grid-cols-3 gap-4">
+              {KANBAN_COLUMNS.map(col => (
+                <KanbanColumn
+                  key={col.key}
+                  column={col}
+                  allocations={grouped[col.key]}
+                  onCardClick={a => navigate(`/allocations/${a.id}`)}
+                />
+              ))}
             </div>
 
-            {/* Desktop: kanban columns */}
-            <div className="hidden md:grid gap-3" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
-              {STATES.map(s => (
-                <div key={s} className="min-h-48">
-                  <div className="text-xs font-semibold text-coffee-600 uppercase tracking-wide mb-2 px-1">
-                    {STATE_LABELS[s]}
-                    <span className="ml-1 text-coffee-400">({grouped[s].length})</span>
+            {/* Mobile: stacked list */}
+            <div className="md:hidden space-y-6">
+              {KANBAN_COLUMNS.map(col => (
+                <div key={col.key}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <p className="text-xs text-coffee-400 uppercase tracking-wide">
+                      {col.label}
+                    </p>
+                    <span className="text-xs text-coffee-300">({grouped[col.key].length})</span>
                   </div>
                   <div className="space-y-2">
-                    {grouped[s].map(a => (
-                      <AllocationCard key={a.id} alloc={a} onClick={() => navigate(`/allocations/${a.id}`)} />
+                    {grouped[col.key].map(a => (
+                      <AllocationCard
+                        key={a.id}
+                        alloc={a}
+                        onClick={() => navigate(`/allocations/${a.id}`)}
+                      />
                     ))}
+                    {grouped[col.key].length === 0 && (
+                      <p className="text-xs text-coffee-300 py-4 text-center border border-dashed border-coffee-200 rounded-xl">
+                        None
+                      </p>
+                    )}
                   </div>
                 </div>
               ))}

@@ -3,19 +3,26 @@ export default {
   content: ['./index.html', './src/**/*.{js,jsx,ts,tsx}'],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+      },
       colors: {
         coffee: {
-          50:  '#f4faf6',
-          100: '#e6f4ed',
-          200: '#c5e7d5',
-          300: '#96d3b1',
-          400: '#61bb89',
-          500: '#3c9e67',
-          600: '#2e7f51',
-          700: '#246540',
-          800: '#1d5033',
-          900: '#143824',
+          25:  '#FDFAF6',
+          50:  '#FAF6F0',
+          100: '#F2EAE0',
+          200: '#E0D0BC',
+          300: '#C9B49A',
+          400: '#A8896A',
+          500: '#8B6A47',
+          600: '#6F5035',
+          700: '#533A24',
+          800: '#3A2616',
+          900: '#221508',
         },
+      },
+      borderRadius: {
+        'r-6': '0 6px 6px 0',
       },
     },
   },

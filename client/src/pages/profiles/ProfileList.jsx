@@ -1,31 +1,148 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { LineChart, Line, ResponsiveContainer } from 'recharts';
 import Layout from '../../components/Layout';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
+import { PageHeader, Button, ProcessBadge } from '../../components/ui';
 
 const TZ = 'Asia/Vientiane';
-const STATUS_STYLES = {
-  development:      'bg-gray-100 text-gray-600',
-  pending_approval: 'bg-amber-100 text-amber-700',
-  approved:         'bg-green-100 text-green-700',
-  retired:          'bg-red-50 text-red-400',
+
+const STATUS_META = {
+  development:      { cls: 'badge-draft',        label: 'Development' },
+  pending_approval: { cls: 'badge-under-review', label: 'Pending Approval' },
+  approved:         { cls: 'badge-published',    label: 'Approved' },
+  retired:          { cls: 'badge-missing',      label: 'Retired' },
 };
 
 function fmtMSS(sec) {
   if (!sec) return '—';
-  return `${String(Math.floor(sec/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`;
+  return `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(sec % 60).padStart(2, '0')}`;
 }
 function fmtDate(iso) {
   if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('en-GB', { timeZone: TZ });
+  return new Date(iso).toLocaleDateString('en-GB', { timeZone: TZ, day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+// Generates a simplified mock sparkline for a profile based on charge/eject temps
+function makeCurveData(profile) {
+  const charge = profile.charge_temp_c || 180;
+  const eject  = profile.eject_temp_c  || 210;
+  const points = [];
+  const totalS = profile.total_time_target_s || 600;
+  const steps  = 12;
+  for (let i = 0; i <= steps; i++) {
+    const pct = i / steps;
+    // Simplified S-curve: slow start, rapid middle, plateau at end
+    const t = pct * pct * (3 - 2 * pct);
+    points.push({ t: i, temp: charge + (eject - charge) * t });
+  }
+  return points;
+}
+
+function ProfileCard({ profile, onView, onEdit, onSubmit, onDuplicate, isEditor, isAdmin }) {
+  const meta = STATUS_META[profile.status] || { cls: 'badge-draft', label: profile.status };
+  const curveData = makeCurveData(profile);
+  const isRetired = profile.status === 'retired';
+
+  return (
+    <div
+      className="bg-white border border-coffee-200 rounded-xl p-5 transition-colors duration-150"
+      style={{ opacity: isRetired ? 0.55 : 1 }}
+    >
+      {/* Header */}
+      <div className="flex items-start justify-between mb-3">
+        <div>
+          <p className="text-sm text-coffee-900" style={{ fontWeight: 500 }}>
+            {profile.process} · {profile.harvest_year}
+          </p>
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs mt-1 ${meta.cls}`}>
+            {meta.label}
+          </span>
+        </div>
+        {/* Sparkline */}
+        <div style={{ width: 120, height: 40 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={curveData} margin={{ top: 2, right: 2, bottom: 2, left: 2 }}>
+              <Line
+                type="monotone"
+                dataKey="temp"
+                stroke="#EF9F27"
+                dot={false}
+                strokeWidth={1.5}
+                isAnimationActive={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Stats row */}
+      <div className="flex gap-4 mb-3">
+        <div>
+          <p className="text-xs text-coffee-300 mb-0.5">Charge</p>
+          <p className="text-sm text-coffee-700">{profile.charge_temp_c}°C</p>
+        </div>
+        <div>
+          <p className="text-xs text-coffee-300 mb-0.5">Eject</p>
+          <p className="text-sm text-coffee-700">{profile.eject_temp_c}°C</p>
+        </div>
+        <div>
+          <p className="text-xs text-coffee-300 mb-0.5">Time</p>
+          <p className="text-sm font-mono text-coffee-700">{fmtMSS(profile.total_time_target_s)}</p>
+        </div>
+        <div>
+          <p className="text-xs text-coffee-300 mb-0.5">DTR</p>
+          <p className="text-sm text-coffee-700">{profile.target_dtr}%</p>
+        </div>
+      </div>
+
+      {/* Flavour target */}
+      {profile.flavour_target && (
+        <p className="text-xs text-coffee-400 mb-3 line-clamp-2 leading-relaxed">
+          {profile.flavour_target}
+        </p>
+      )}
+
+      {/* Approved by */}
+      {profile.approved_by_name && (
+        <p className="text-xs text-coffee-300 mb-3">
+          Approved by {profile.approved_by_name} · {fmtDate(profile.approved_at)}
+        </p>
+      )}
+
+      {/* Actions */}
+      <div className="flex flex-wrap gap-1.5 pt-3 border-t border-coffee-100">
+        <Button variant="ghost" size="sm" onClick={onView}>View</Button>
+        {isEditor && profile.status === 'development' && (
+          <Button variant="ghost" size="sm" onClick={onEdit}>Edit</Button>
+        )}
+        {isEditor && profile.status === 'development' && (
+          <Button variant="ghost" size="sm" onClick={onSubmit}
+            style={{ color: '#BA7517' }}>
+            Submit
+          </Button>
+        )}
+        {isAdmin && profile.status === 'pending_approval' && (
+          <Button variant="ghost" size="sm" onClick={onView}
+            style={{ color: '#3B6D11' }}>
+            Approve
+          </Button>
+        )}
+        <Button variant="ghost" size="sm" onClick={onDuplicate}
+          className="ml-auto">
+          Duplicate
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 export default function ProfileList() {
   const [profiles, setProfiles] = useState([]);
   const [loading,  setLoading]  = useState(true);
   const { user } = useAuth();
-  const navigate  = useNavigate();
+  const navigate = useNavigate();
 
   function load() {
     setLoading(true);
@@ -36,7 +153,7 @@ export default function ProfileList() {
   useEffect(load, []);
 
   const isAdmin  = user?.role === 'admin';
-  const isEditor = ['admin','roaster'].includes(user?.role);
+  const isEditor = ['admin', 'roaster'].includes(user?.role);
 
   async function submit(id) {
     await api.post(`/profiles/${id}/submit`, {});
@@ -45,84 +162,55 @@ export default function ProfileList() {
 
   // Group by process
   const grouped = profiles.reduce((acc, p) => {
-    if (!acc[p.process]) acc[p.process] = [];
-    acc[p.process].push(p);
+    const key = p.process;
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(p);
     return acc;
   }, {});
 
+  const processOrder = ['Washed', 'Honey', 'Natural', 'Anaerobic'].filter(p => grouped[p]);
+
   return (
     <Layout>
-      <div className="max-w-5xl mx-auto p-4">
-        <div className="flex items-center justify-between mb-5">
-          <h1 className="text-2xl font-bold text-coffee-900">Roast Profiles</h1>
-          {isEditor && (
-            <button onClick={() => navigate('/profiles/new')}
-              className="px-4 py-2 bg-coffee-700 text-white rounded-md text-sm font-semibold hover:bg-coffee-800">
-              + New Profile
-            </button>
-          )}
-        </div>
+      <div className="max-w-6xl mx-auto px-6 py-6">
+        <PageHeader
+          title="Roast Profiles"
+          subtitle={`${profiles.length} profile${profiles.length !== 1 ? 's' : ''}`}
+          actions={
+            isEditor && (
+              <Button variant="primary" onClick={() => navigate('/profiles/new')}>
+                + New Profile
+              </Button>
+            )
+          }
+        />
 
         {loading ? (
-          <p className="text-coffee-500">Loading…</p>
-        ) : Object.keys(grouped).length === 0 ? (
-          <p className="text-coffee-400 text-center py-12">No profiles yet.</p>
+          <p className="text-sm text-coffee-400">Loading…</p>
+        ) : processOrder.length === 0 ? (
+          <p className="text-sm text-coffee-300 text-center py-16">
+            No roast profiles yet.
+          </p>
         ) : (
-          Object.entries(grouped).map(([process, plist]) => (
-            <div key={process} className="mb-6">
-              <h2 className="text-sm font-bold text-coffee-700 uppercase tracking-wide mb-2">{process}</h2>
-              <div className="bg-white border border-coffee-200 rounded-lg overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-coffee-50 border-b border-coffee-200">
-                    <tr>
-                      {['Year','Status','Charge','Eject','DTR%','Time','Flavour Target','Approved By','Actions'].map(h => (
-                        <th key={h} className="text-left px-3 py-2 text-xs font-semibold text-coffee-600 whitespace-nowrap">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {plist.map(p => (
-                      <tr key={p.id} className={`border-b border-coffee-50 hover:bg-coffee-50 ${p.status === 'retired' ? 'opacity-50' : ''}`}>
-                        <td className="px-3 py-2 font-semibold">{p.harvest_year}</td>
-                        <td className="px-3 py-2">
-                          <span className={`text-xs px-1.5 py-0.5 rounded capitalize ${STATUS_STYLES[p.status]}`}>
-                            {p.status.replace(/_/g,' ')}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2">{p.charge_temp_c}°C</td>
-                        <td className="px-3 py-2">{p.eject_temp_c}°C</td>
-                        <td className="px-3 py-2">{p.target_dtr}%</td>
-                        <td className="px-3 py-2 font-mono">{fmtMSS(p.total_time_target_s)}</td>
-                        <td className="px-3 py-2 max-w-xs truncate text-coffee-500 text-xs">
-                          {p.flavour_target?.substring(0, 60)}{p.flavour_target?.length > 60 ? '…' : ''}
-                        </td>
-                        <td className="px-3 py-2 text-xs text-coffee-400">
-                          {p.approved_by_name ? `${p.approved_by_name} · ${fmtDate(p.approved_at)}` : '—'}
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="flex gap-1.5 flex-wrap">
-                            <button onClick={() => navigate(`/profiles/${p.id}`)}
-                              className="text-xs px-2 py-0.5 bg-coffee-100 text-coffee-700 rounded hover:bg-coffee-200">View</button>
-                            {isEditor && p.status === 'development' && (
-                              <button onClick={() => navigate(`/profiles/${p.id}/edit`)}
-                                className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded hover:bg-amber-200">Edit</button>
-                            )}
-                            {isEditor && p.status === 'development' && (
-                              <button onClick={() => submit(p.id)}
-                                className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded hover:bg-blue-200">Submit</button>
-                            )}
-                            {isAdmin && p.status === 'pending_approval' && (
-                              <button onClick={() => navigate(`/profiles/${p.id}`)}
-                                className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded hover:bg-green-200">Approve</button>
-                            )}
-                            <button onClick={() => navigate(`/profiles/new?from=${p.id}`)}
-                              className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded hover:bg-gray-200">Duplicate</button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          processOrder.map(process => (
+            <div key={process} className="mb-8">
+              <div className="flex items-center gap-3 mb-4">
+                <ProcessBadge process={process} />
+                <div style={{ flex: 1, height: 1, background: '#E0D0BC' }} />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {grouped[process].map(p => (
+                  <ProfileCard
+                    key={p.id}
+                    profile={p}
+                    isEditor={isEditor}
+                    isAdmin={isAdmin}
+                    onView={() => navigate(`/profiles/${p.id}`)}
+                    onEdit={() => navigate(`/profiles/${p.id}/edit`)}
+                    onSubmit={() => submit(p.id)}
+                    onDuplicate={() => navigate(`/profiles/new?from=${p.id}`)}
+                  />
+                ))}
               </div>
             </div>
           ))
