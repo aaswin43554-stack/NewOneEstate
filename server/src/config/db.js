@@ -4,30 +4,22 @@ if (!process.env.DATABASE_URL) {
   console.error('[DB][DB_001] DATABASE_URL is not set — all queries will fail');
 }
 
-// Append search_path as a connection parameter so it is set at the protocol level
-// on every new connection — no extra round-trip query needed.
-function buildConnectionString(url) {
-  if (!url) return url;
-  try {
-    const u = new URL(url);
-    u.searchParams.set('options', '-c search_path=ops,public');
-    return u.toString();
-  } catch {
-    // Fallback for non-URL connection strings
-    return url + (url.includes('?') ? '&' : '?') + 'options=-c%20search_path%3Dops%2Cpublic';
-  }
-}
-
 const pool = new Pool({
-  connectionString: buildConnectionString(process.env.DATABASE_URL),
+  connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL?.includes('supabase') ? { rejectUnauthorized: false } : false,
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,
 });
 
-pool.on('connect', () => {
+// Set search_path on every new physical connection.
+// Fire-and-forget is safe here — pg serialises queries per client,
+// so this SET always executes before the first user query on that connection.
+pool.on('connect', (client) => {
   console.log(`[DB] New connection established (pool size: ${pool.totalCount})`);
+  client.query('SET search_path TO ops, public').catch((err) => {
+    console.error(`[DB] Failed to set search_path: ${err.message}`);
+  });
 });
 
 pool.on('remove', () => {
