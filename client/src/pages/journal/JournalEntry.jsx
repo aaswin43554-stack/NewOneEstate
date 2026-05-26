@@ -153,18 +153,22 @@ export default function JournalEntry() {
         </div>
 
         {/* Tab strip */}
-        <div
-          className="flex gap-0 mb-6 border-b border-coffee-200"
-        >
+        <div className="flex gap-0 mb-6 border-b border-coffee-200">
           {DOC_TYPES.map(t => {
             const isActive = t === type;
             const docStatus = data.documents?.[t]?.status || 'missing';
-            const meta = STATUS_META[docStatus] || STATUS_META.missing;
+            const dotColor = {
+              published:    '#3B7A1A',
+              under_review: '#BA7517',
+              draft:        '#C4A87A',
+              missing:      null,
+            }[docStatus];
+
             return (
               <Link
                 key={t}
                 to={`/journal/${allocation_id}/${t}`}
-                className="flex items-center gap-1.5 px-4 py-2.5 text-sm transition-colors duration-150 -mb-px"
+                className="flex items-center gap-2 px-4 py-2.5 text-sm transition-colors duration-150 -mb-px whitespace-nowrap"
                 style={{
                   color:        isActive ? '#533A24' : '#A8896A',
                   borderBottom: isActive ? '2px solid #6F5035' : '2px solid transparent',
@@ -172,10 +176,20 @@ export default function JournalEntry() {
                 }}
               >
                 {DOC_LABELS[t]}
-                {!isActive && (
-                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-xs ${meta.cls}`}>
-                    {meta.label}
-                  </span>
+                {dotColor && (
+                  <span
+                    title={STATUS_META[docStatus]?.label}
+                    style={{
+                      display:      'inline-block',
+                      width:        7,
+                      height:       7,
+                      borderRadius: '50%',
+                      background:   isActive ? 'transparent' : dotColor,
+                      flexShrink:   0,
+                      opacity:      isActive ? 0 : 1,
+                      transition:   'opacity 150ms',
+                    }}
+                  />
                 )}
               </Link>
             );

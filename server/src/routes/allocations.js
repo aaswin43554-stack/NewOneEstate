@@ -67,9 +67,14 @@ router.post('/', requireRole('admin', 'roaster'), async (req, res) => {
     await client.query('COMMIT');
     return res.status(201).json({ allocation: alloc });
   } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
-    console.error('Create allocation:', err);
-    return res.status(500).json({ error: 'Failed to create allocation.' });
+    await client.query('ROLLBACK').catch((rbErr) => {
+      console.error(`[ALLOC] Rollback failed: ${rbErr.message}`);
+    });
+    console.error(`[ALLOC][ALLOC_CREATE_001] Create allocation failed for tenant ${tenant_id}`);
+    console.error(`[ALLOC][ALLOC_CREATE_001] pg code: ${err.code || 'N/A'} | message: ${err.message}`);
+    console.error(`[ALLOC][ALLOC_CREATE_001] body: ${JSON.stringify(req.body)}`);
+    console.error(err.stack);
+    return res.status(500).json({ error: 'Failed to create allocation.', detail: err.message, code: 'ALLOC_CREATE_001' });
   } finally {
     client.release();
   }
@@ -180,8 +185,10 @@ router.post('/:id/requests', requireRole('admin', 'roaster'), async (req, res) =
   const alloc = await fetchAllocation(req.params.id, tenant_id);
   if (!alloc) return res.status(404).json({ error: 'Allocation not found.' });
   if (archivedGuard(alloc, res)) return;
-  if (alloc.state !== 'open_for_requests') {
-    return res.status(400).json({ error: 'Requests can only be added while open.' });
+  const canAddRequest = alloc.state === 'open_for_requests' ||
+    (alloc.state === 'closed' && req.user.role === 'admin');
+  if (!canAddRequest) {
+    return res.status(400).json({ error: 'Requests can only be added while open, or by an admin when closed.' });
   }
 
   const { contact_name, contact_method, channel, quantity_bags, notes } = req.body;
@@ -264,34 +271,61 @@ router.get('/', async (req, res) => {
   if (process) { params.push(process); conditions.push(`a.process = $${params.length}`); }
 
   try {
+    // Single query: all allocations + request counts + dispatch date in one round-trip.
+    // The dispatch_date subquery replaces the N+1 calculateDispatchDate loop.
     const { rows } = await pool.query(
       `SELECT a.*,
               l.lot_code,
-              (SELECT COALESCE(SUM(CASE WHEN r.status='confirmed' THEN r.quantity_bags ELSE 0 END),0)::int
-               FROM oec_allocation_requests r WHERE r.allocation_id = a.id) AS confirmed_bags,
-              (SELECT COALESCE(SUM(CASE WHEN r.status='pending' THEN r.quantity_bags ELSE 0 END),0)::int
-               FROM oec_allocation_requests r WHERE r.allocation_id = a.id) AS pending_bags,
-              (SELECT COALESCE(SUM(CASE WHEN r.status='fulfilled' THEN r.quantity_bags ELSE 0 END),0)::int
-               FROM oec_allocation_requests r WHERE r.allocation_id = a.id) AS fulfilled_bags,
-              (SELECT COUNT(*)::int FROM oec_allocation_requests r WHERE r.allocation_id = a.id) AS total_requests
+              req.confirmed_bags,
+              req.pending_bags,
+              req.fulfilled_bags,
+              req.total_requests,
+              disp.max_ended
        FROM oec_allocations a
        LEFT JOIN oec_lots l ON l.id = a.lot_id
+       LEFT JOIN LATERAL (
+         SELECT
+           COALESCE(SUM(CASE WHEN r.status='confirmed'  THEN r.quantity_bags ELSE 0 END),0)::int AS confirmed_bags,
+           COALESCE(SUM(CASE WHEN r.status='pending'    THEN r.quantity_bags ELSE 0 END),0)::int AS pending_bags,
+           COALESCE(SUM(CASE WHEN r.status='fulfilled'  THEN r.quantity_bags ELSE 0 END),0)::int AS fulfilled_bags,
+           COUNT(*)::int AS total_requests
+         FROM oec_allocation_requests r
+         WHERE r.allocation_id = a.id
+       ) req ON true
+       LEFT JOIN LATERAL (
+         SELECT MAX(ended_at) AS max_ended
+         FROM oec_roast_sessions
+         WHERE allocation_id = a.id
+           AND is_development = false
+           AND status = 'approved_for_bagging'
+           AND deleted_at IS NULL
+       ) disp ON true
        WHERE ${conditions.join(' AND ')}
        ORDER BY a.allocation_code ASC`,
       params
     );
 
-    const allocations = await Promise.all(rows.map(async (a) => ({
-      ...a,
-      projected_bags: calculateProjectedBags(a.planned_green_quantity_g, a.planned_bag_size_g, a.process),
-      dispatch_date: await calculateDispatchDate(a.id, a.process),
-      request_summary: {
-        total_requests: a.total_requests,
-        confirmed_bags: a.confirmed_bags,
-        pending_bags:   a.pending_bags,
-        fulfilled_bags: a.fulfilled_bags,
-      },
-    })));
+    const REST_DAYS = { Washed: 4, Honey: 5, Natural: 7, Anaerobic: 7 };
+    const allocations = rows.map((a) => {
+      let dispatch_date = null;
+      if (a.max_ended) {
+        const d = new Date(a.max_ended);
+        d.setDate(d.getDate() + (REST_DAYS[a.process] || 7));
+        dispatch_date = d.toISOString().split('T')[0];
+      }
+      return {
+        ...a,
+        max_ended: undefined,
+        projected_bags: calculateProjectedBags(a.planned_green_quantity_g, a.planned_bag_size_g, a.process),
+        dispatch_date,
+        request_summary: {
+          total_requests: a.total_requests,
+          confirmed_bags: a.confirmed_bags,
+          pending_bags:   a.pending_bags,
+          fulfilled_bags: a.fulfilled_bags,
+        },
+      };
+    });
 
     return res.json({ allocations });
   } catch (err) {

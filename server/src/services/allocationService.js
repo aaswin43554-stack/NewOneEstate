@@ -34,13 +34,22 @@ async function generateAllocationCode(tenant_id, client) {
     'SELECT next_val FROM oec_allocation_sequence WHERE tenant_id = $1 FOR UPDATE',
     [tenant_id]
   );
+
   let next_val;
   if (rows.length === 0) {
-    await client.query(
-      'INSERT INTO oec_allocation_sequence (tenant_id, next_val) VALUES ($1, 2)',
+    // Bootstrap: derive starting point from existing allocations so we never collide
+    const { rows: existing } = await client.query(
+      `SELECT MAX(CAST(regexp_replace(allocation_code, '^[^-]+-', '') AS INTEGER)) AS max_num
+       FROM oec_allocations WHERE tenant_id = $1`,
       [tenant_id]
     );
-    next_val = 1;
+    const max_num = existing[0]?.max_num ?? 0;
+    next_val = max_num + 1;
+    await client.query(
+      'INSERT INTO oec_allocation_sequence (tenant_id, next_val) VALUES ($1, $2)',
+      [tenant_id, next_val + 1]
+    );
+    console.log(`[ALLOC] Bootstrapped sequence for tenant ${tenant_id} — max existing: ${max_num}, starting at: ${next_val}`);
   } else {
     next_val = rows[0].next_val;
     await client.query(
@@ -48,6 +57,7 @@ async function generateAllocationCode(tenant_id, client) {
       [tenant_id]
     );
   }
+
   return 'W-' + String(next_val).padStart(2, '0');
 }
 

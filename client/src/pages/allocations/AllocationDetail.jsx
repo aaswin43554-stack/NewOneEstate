@@ -58,13 +58,15 @@ export default function AllocationDetail() {
   const [reqOpen,   setReqOpen]   = useState(false);
   const [reqSaving, setReqSaving] = useState(false);
   const [reqError,  setReqError]  = useState('');
-  const [rowErrors, setRowErrors] = useState({});
+  const [rowErrors,    setRowErrors]    = useState({});
+  const [rowActioning, setRowActioning] = useState({});
   const [journalDocs,       setJournalDocs]       = useState(null);
   const [journalLoading,    setJournalLoading]    = useState(false);
   const [journalGenerating, setJournalGenerating] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
+    setRowErrors({});   // clear stale per-row errors on every reload
     api.get(`/allocations/${id}`)
       .then(r => r.json())
       .then(setData)
@@ -122,10 +124,13 @@ export default function AllocationDetail() {
   }
 
   async function updateReqStatus(reqId, status) {
+    setRowActioning(p => ({ ...p, [reqId]: true }));
+    setRowErrors(p => ({ ...p, [reqId]: null }));
     const res = await api.put(`/allocations/${id}/requests/${reqId}`, { status });
     const d = await res.json();
-    if (res.ok) { load(); setRowErrors(p => ({ ...p, [reqId]: null })); }
+    if (res.ok) { load(); }
     else { setRowErrors(p => ({ ...p, [reqId]: d.error })); }
+    setRowActioning(p => ({ ...p, [reqId]: false }));
   }
 
   if (loading) return <Layout><div className="px-6 py-6 text-sm text-coffee-400">Loading…</div></Layout>;
@@ -180,7 +185,7 @@ export default function AllocationDetail() {
           <div className="flex items-center justify-between mb-4">
             <p className="text-xs text-coffee-400 uppercase tracking-wide">Requests</p>
             <div className="flex gap-2">
-              {!isArchived && isAdmin && a.state === 'open_for_requests' && (
+              {!isArchived && isAdmin && (a.state === 'open_for_requests' || a.state === 'closed') && (
                 <>
                   <Button variant="secondary" size="sm" onClick={() => setReqOpen(p => !p)}>
                     + Add Request
@@ -188,6 +193,9 @@ export default function AllocationDetail() {
                   <Link to={`/allocations/${id}/add-request`}>
                     <Button variant="ghost" size="sm">Quick Add</Button>
                   </Link>
+                  {a.state === 'closed' && (
+                    <span className="text-xs text-coffee-400 italic">admin override</span>
+                  )}
                 </>
               )}
             </div>
@@ -302,19 +310,21 @@ export default function AllocationDetail() {
                           {r.status === 'pending' && (
                             <button
                               onClick={() => updateReqStatus(r.id, 'confirmed')}
-                              className="text-xs transition-colors"
+                              disabled={!!rowActioning[r.id]}
+                              className="text-xs transition-colors disabled:opacity-40"
                               style={{ color: '#3B6D11' }}
                             >
-                              Confirm
+                              {rowActioning[r.id] ? '…' : 'Confirm'}
                             </button>
                           )}
                           {r.status === 'confirmed' && (
                             <button
                               onClick={() => updateReqStatus(r.id, 'fulfilled')}
-                              className="text-xs transition-colors"
+                              disabled={!!rowActioning[r.id]}
+                              className="text-xs transition-colors disabled:opacity-40"
                               style={{ color: '#185FA5' }}
                             >
-                              Fulfil
+                              {rowActioning[r.id] ? '…' : 'Fulfil'}
                             </button>
                           )}
                         </td>
@@ -484,28 +494,79 @@ export default function AllocationDetail() {
           style={{ background: 'rgba(34,21,8,0.2)' }}
         >
           <div className="bg-white rounded-2xl border border-coffee-200 w-full max-w-md p-6">
-            <h2 className="text-base text-coffee-900 mb-4" style={{ fontWeight: 500 }}>
-              Move to: {STATE_LABELS[transitionChecks.next_state] || transitionChecks.next_state}
-            </h2>
+            {/* Header */}
+            <div className="mb-4">
+              <p className="text-xs text-coffee-400 uppercase tracking-wide mb-1">State Transition</p>
+              <h2 className="text-base text-coffee-900" style={{ fontWeight: 500 }}>
+                Move to: {STATE_LABELS[transitionChecks.next_state] || transitionChecks.next_state}
+              </h2>
+            </div>
 
+            {/* Checks */}
             {transitionChecks.checks.length > 0 && (
-              <ul className="space-y-2 mb-4">
-                {transitionChecks.checks.map((c, i) => (
-                  <li key={i} className="flex items-start gap-2 text-sm">
-                    <span style={{ color: c.passed ? '#3B6D11' : '#A32D2D' }}>
-                      {c.passed ? '✓' : '✗'}
-                    </span>
-                    <span>
-                      <span className="text-coffee-700" style={{ fontWeight: 500 }}>{c.label}</span>
-                      {!c.passed && c.reason && (
-                        <span className="block text-xs mt-0.5" style={{ color: '#A32D2D' }}>{c.reason}</span>
-                      )}
-                    </span>
-                  </li>
-                ))}
+              <ul className="space-y-3 mb-5">
+                {transitionChecks.checks.map((c, i) => {
+                  // Map failing checks to a direct fix link
+                  const fixLink = !c.passed ? {
+                    'Approved roast profile': { to: '/profiles', label: `Create a ${a.process} profile` },
+                    'Confirmed requests':     null,
+                    'Green stock reserved':   lot ? { to: `/inventory/${lot.id}`, label: 'Go to lot inventory' } : null,
+                    'All sessions approved for bagging': { to: '/roast', label: 'Go to Roast Sessions' },
+                    'Bag count within yield': null,
+                  }[c.label] : null;
+
+                  return (
+                    <li
+                      key={i}
+                      className="rounded-lg px-3 py-2.5 flex items-start gap-3"
+                      style={{
+                        background: c.passed ? '#F2FAF0' : '#FDF4F4',
+                        border: `1px solid ${c.passed ? '#C8E6C0' : '#F3C0C0'}`,
+                      }}
+                    >
+                      <span
+                        className="mt-0.5 text-xs"
+                        style={{
+                          color: c.passed ? '#3B6D11' : '#A32D2D',
+                          fontWeight: 600,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {c.passed ? '✓' : '✗'}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p
+                          className="text-sm"
+                          style={{
+                            color: c.passed ? '#3B6D11' : '#7A1A1A',
+                            fontWeight: 500,
+                          }}
+                        >
+                          {c.label}
+                        </p>
+                        {!c.passed && c.reason && (
+                          <p className="text-xs mt-0.5" style={{ color: '#A32D2D', lineHeight: 1.5 }}>
+                            {c.reason}
+                          </p>
+                        )}
+                        {fixLink && (
+                          <Link
+                            to={fixLink.to}
+                            onClick={() => setTransitionModal(false)}
+                            className="inline-flex items-center gap-1 text-xs mt-1.5 underline underline-offset-2 transition-opacity hover:opacity-70"
+                            style={{ color: '#A32D2D', fontWeight: 500 }}
+                          >
+                            {fixLink.label} →
+                          </Link>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             )}
 
+            {/* Notes field — only shown when all checks pass */}
             {allChecksPassed && (
               <textarea
                 value={transNotes}
@@ -525,6 +586,7 @@ export default function AllocationDetail() {
                 onClick={confirmTransition}
                 disabled={!allChecksPassed || transSaving}
                 className="flex-1 justify-center"
+                style={allChecksPassed ? { background: '#3B6D11', color: '#fff' } : {}}
               >
                 {transSaving ? 'Moving…' : 'Confirm Transition'}
               </Button>
@@ -532,6 +594,12 @@ export default function AllocationDetail() {
                 Cancel
               </Button>
             </div>
+
+            {!allChecksPassed && (
+              <p className="text-xs text-center mt-3 text-coffee-400">
+                Resolve the items above, then return to proceed.
+              </p>
+            )}
           </div>
         </div>
       )}
