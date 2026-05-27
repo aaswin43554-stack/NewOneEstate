@@ -74,7 +74,8 @@ router.post('/generate', async (req, res) => {
     }
   }
 
-  const qr_url = `https://journal.oneestatecoffee.com/allocations/${alloc.allocation_code}`;
+  const baseUrl = (process.env.APP_URL || 'https://newoneestate.onrender.com').replace(/\/$/, '');
+  const qr_url = `${baseUrl}/allocations/${alloc.allocation_code}`;
 
   let qr_code_base64;
   try {
