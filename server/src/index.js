@@ -1,5 +1,10 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 
+// Render's infrastructure doesn't support IPv6 outbound — force IPv4 DNS resolution
+// so Supabase hostnames resolve to their IPv4 address instead of the IPv6 one.
+const dns = require('dns');
+dns.setDefaultResultOrder('ipv4first');
+
 // Prevent ANY unhandled error from crashing the server
 process.on('unhandledRejection', (reason) => {
   console.error('[server][CRASH_001] unhandledRejection:', reason?.message || reason);
