@@ -27,6 +27,7 @@ const seed    = require('./scripts/seed');
 const { requireAuth } = require('./middleware/auth');
 const pool = require('./config/db');
 
+const publicRoutes        = require('./routes/public');
 const authRoutes          = require('./routes/auth');
 const lotsRoutes          = require('./routes/lots');
 const roastSessionRoutes  = require('./routes/roastSessions');
@@ -69,6 +70,7 @@ app.get('/api/health', (_req, res) => {
   return res.json({ status: 'ok', timestamp: new Date().toISOString(), db: !!process.env.DATABASE_URL });
 });
 
+app.use('/api/public',           publicRoutes);
 app.use('/api/auth',             authRoutes);
 app.use('/api/lots',             lotsRoutes);
 app.use('/api/roast-sessions',   roastSessionRoutes);

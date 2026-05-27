@@ -35,6 +35,9 @@ import CuppingCompare from './pages/cupping/CuppingCompare';
 import LabelsIndex  from './pages/labels/LabelsIndex';
 import LabelPreview from './pages/labels/LabelPreview';
 
+// Public pages (no auth)
+import PublicAllocation from './pages/public/PublicAllocation';
+
 // Journal pages
 import JournalDashboard from './pages/journal/JournalDashboard';
 import JournalEntry     from './pages/journal/JournalEntry';
@@ -61,6 +64,7 @@ export default function App() {
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/public/allocations/:id" element={<PublicAllocation />} />
 
           {/* Dashboard */}
           <Route path="/"          element={<P element={<Dashboard />} />} />
