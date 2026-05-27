@@ -32,6 +32,7 @@ import CuppingDetail  from './pages/cupping/CuppingDetail';
 import CuppingCompare from './pages/cupping/CuppingCompare';
 
 // Label pages
+import LabelsIndex  from './pages/labels/LabelsIndex';
 import LabelPreview from './pages/labels/LabelPreview';
 
 // Journal pages
@@ -94,6 +95,7 @@ export default function App() {
           <Route path="/cupping/:id"     element={<P element={<CuppingDetail />} />} />
 
           {/* Labels */}
+          <Route path="/labels" element={<P element={<LabelsIndex />} />} />
           <Route path="/labels/:allocation_id" element={<P element={<LabelPreview />} />} />
 
           {/* Journal */}

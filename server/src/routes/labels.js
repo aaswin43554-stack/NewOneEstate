@@ -15,6 +15,26 @@ function addDays(date, days) {
   return d.toISOString().split('T')[0];
 }
 
+// GET /api/labels — list all allocations with their label status
+router.get('/', async (req, res) => {
+  const tenant_id = req.user.tenant_id;
+  try {
+    const { rows } = await pool.query(
+      `SELECT a.id, a.allocation_code, a.process, a.state, a.harvest_year,
+              l.id AS label_id, l.generated_at
+       FROM oec_allocations a
+       LEFT JOIN oec_labels l ON l.allocation_id = a.id AND l.tenant_id = a.tenant_id
+       WHERE a.tenant_id = $1 AND a.deleted_at IS NULL
+       ORDER BY a.created_at DESC`,
+      [tenant_id]
+    );
+    return res.json({ allocations: rows });
+  } catch (err) {
+    console.error('List labels:', err);
+    return res.status(500).json({ error: 'Failed to fetch labels.' });
+  }
+});
+
 // POST /api/labels/generate
 router.post('/generate', async (req, res) => {
   const tenant_id = req.user.tenant_id;
@@ -26,32 +46,33 @@ router.post('/generate', async (req, res) => {
     [allocation_id, tenant_id]
   );
   if (!alloc) return res.status(404).json({ error: 'Allocation not found.' });
-  if (!['resting', 'dispatched'].includes(alloc.state)) {
+  if (['upcoming', 'open_for_requests'].includes(alloc.state)) {
     return res.status(400).json({
-      error: `Labels can only be generated when the allocation is resting or dispatched. Current state: ${alloc.state}.`,
+      error: `Labels cannot be generated while the allocation is still ${alloc.state.replace(/_/g, ' ')}.`,
     });
   }
 
+  // Use any completed or approved production sessions for roast dates (optional)
   const { rows: sessions } = await pool.query(
     `SELECT started_at, ended_at FROM oec_roast_sessions
      WHERE allocation_id = $1 AND is_development = false
-       AND status = 'approved_for_bagging' AND deleted_at IS NULL`,
+       AND status IN ('completed', 'approved_for_bagging') AND deleted_at IS NULL`,
     [allocation_id]
   );
-  if (sessions.length === 0) {
-    return res.status(400).json({
-      error: 'No approved production roast sessions found. All sessions must be approved for bagging before generating a label.',
-    });
+
+  let roast_date_start = null, roast_date_end = null;
+  let ready_to_brew_date = null, best_consumed_by_date = null;
+  if (sessions.length > 0) {
+    const startDates = sessions.map(s => new Date(s.started_at));
+    const endDates   = sessions.filter(s => s.ended_at).map(s => new Date(s.ended_at));
+    roast_date_start = new Date(Math.min(...startDates)).toISOString().split('T')[0];
+    if (endDates.length > 0) {
+      roast_date_end = new Date(Math.max(...endDates)).toISOString().split('T')[0];
+      const rest_days = REST_DAYS[alloc.process] || 7;
+      ready_to_brew_date    = addDays(roast_date_end, rest_days);
+      best_consumed_by_date = addDays(roast_date_end, 90);
+    }
   }
-
-  const startDates  = sessions.map(s => new Date(s.started_at));
-  const endDates    = sessions.filter(s => s.ended_at).map(s => new Date(s.ended_at));
-  const roast_date_start = new Date(Math.min(...startDates)).toISOString().split('T')[0];
-  const roast_date_end   = new Date(Math.max(...endDates)).toISOString().split('T')[0];
-
-  const rest_days           = REST_DAYS[alloc.process] || 7;
-  const ready_to_brew_date  = addDays(roast_date_end, rest_days);
-  const best_consumed_by_date = addDays(roast_date_end, 90);
 
   const qr_url = `https://journal.oneestatecoffee.com/allocations/${alloc.allocation_code}`;
 
