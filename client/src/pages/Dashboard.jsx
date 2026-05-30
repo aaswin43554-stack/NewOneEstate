@@ -4,7 +4,7 @@ import { useAuth } from '../lib/auth';
 import Layout from '../components/Layout';
 import { api } from '../lib/api';
 import { StatCard, Button, StatusBadge, ProcessBadge } from '../components/ui';
-import { Flame, Layers, FlaskConical, UserPlus, Radio } from 'lucide-react';
+import { Flame, Layers, FlaskConical, UserPlus, Radio, Wand2, TrendingDown, BarChart2 } from 'lucide-react';
 
 const EVENT_COLORS = {
   roast:      '#EF9F27',
@@ -74,11 +74,27 @@ function PendingAction({ action }) {
   );
 }
 
+const RISK_COLORS = {
+  critical: { bg: '#FCEBEB', color: '#A32D2D' },
+  high:     { bg: '#FAEEDA', color: '#BA7517' },
+  medium:   { bg: '#FEF3C7', color: '#92400E' },
+  low:      { bg: '#EAF3DE', color: '#3B6D11' },
+};
+
 export default function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const [forecastData,    setForecastData]    = useState(null);
+  const [forecastLoading, setForecastLoading] = useState(false);
+  const [forecastError,   setForecastError]   = useState('');
+  const [patternsData,    setPatternsData]    = useState(null);
+  const [patternsLoading, setPatternsLoading] = useState(false);
+  const [patternsError,   setPatternsError]   = useState('');
+  const [showForecast,    setShowForecast]    = useState(false);
+  const [showPatterns,    setShowPatterns]    = useState(false);
 
   useEffect(() => {
     api.get('/dashboard-stats')
@@ -86,6 +102,32 @@ export default function Dashboard() {
       .then(d => { setStats(d); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
+
+  async function loadForecast() {
+    if (forecastData) { setShowForecast(v => !v); return; }
+    setForecastLoading(true); setForecastError('');
+    try {
+      const res = await api.post('/ai/stock-forecast', {});
+      const d   = await res.json();
+      if (!res.ok) { setForecastError(d.error || 'AI failed.'); return; }
+      setForecastData(d.forecast);
+      setShowForecast(true);
+    } catch { setForecastError('Network error.'); }
+    finally  { setForecastLoading(false); }
+  }
+
+  async function loadPatterns() {
+    if (patternsData) { setShowPatterns(v => !v); return; }
+    setPatternsLoading(true); setPatternsError('');
+    try {
+      const res = await api.post('/ai/yield-patterns', {});
+      const d   = await res.json();
+      if (!res.ok) { setPatternsError(d.error || 'AI failed.'); return; }
+      setPatternsData(d.patterns);
+      setShowPatterns(true);
+    } catch { setPatternsError('Network error.'); }
+    finally  { setPatternsLoading(false); }
+  }
 
   const greenStockKg = stats
     ? (stats.totalGreenStockG / 1000).toFixed(1) + ' kg'
@@ -159,6 +201,22 @@ export default function Dashboard() {
               {' '}— allocation in progress
             </p>
             <Radio size={14} className="text-coffee-400 ml-auto" />
+          </div>
+        )}
+
+        {/* Quality degradation alert */}
+        {stats?.qualityAlertLotsCount > 0 && (
+          <div
+            className="flex items-center gap-3 mb-5 px-4 py-3 rounded-xl border cursor-pointer"
+            style={{ background: '#FEF3C7', borderColor: '#F59E0B' }}
+            onClick={() => navigate('/inventory')}
+          >
+            <span className="text-sm" style={{ color: '#92400E' }}>
+              <span style={{ fontWeight: 500 }}>
+                {stats.qualityAlertLotsCount} lot{stats.qualityAlertLotsCount !== 1 ? 's' : ''}
+              </span>
+              {' '}in storage over 12 months — quality may be degrading. Review inventory.
+            </span>
           </div>
         )}
 
@@ -269,9 +327,92 @@ export default function Dashboard() {
                   {link.label}
                 </button>
               ))}
+
+              <div className="pt-2 border-t border-coffee-100 space-y-1.5">
+                <button
+                  onClick={loadForecast}
+                  disabled={forecastLoading}
+                  className="flex items-center gap-2 w-full text-left text-sm text-coffee-500 hover:text-coffee-800 transition-colors py-1 disabled:opacity-50"
+                >
+                  <span className="text-coffee-400"><TrendingDown size={13} /></span>
+                  {forecastLoading ? 'Forecasting…' : 'AI: Stock depletion forecast'}
+                </button>
+                <button
+                  onClick={loadPatterns}
+                  disabled={patternsLoading}
+                  className="flex items-center gap-2 w-full text-left text-sm text-coffee-500 hover:text-coffee-800 transition-colors py-1 disabled:opacity-50"
+                >
+                  <span className="text-coffee-400"><BarChart2 size={13} /></span>
+                  {patternsLoading ? 'Analyzing…' : 'AI: Yield variance patterns'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
+
+        {/* AI Stock Forecast panel */}
+        {showForecast && forecastData && (
+          <div className="bg-white border border-coffee-200 rounded-xl p-5 mt-5">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs text-coffee-400 uppercase tracking-wide">Stock Depletion Forecast</p>
+              <button onClick={() => setShowForecast(false)} className="text-coffee-300 hover:text-coffee-600 text-lg leading-none">×</button>
+            </div>
+            <p className="text-sm text-coffee-800 mb-3">{forecastData.summary}</p>
+            {Array.isArray(forecastData.forecast) && forecastData.forecast.length > 0 && (
+              <div className="space-y-2 mb-3">
+                {forecastData.forecast.map((f, i) => {
+                  const meta = RISK_COLORS[f.risk_level] || RISK_COLORS.low;
+                  return (
+                    <div key={i} className="flex items-center justify-between px-3 py-2 rounded-lg text-sm" style={{ background: meta.bg, color: meta.color }}>
+                      <span style={{ fontWeight: 500 }}>{f.lot_code}</span>
+                      <span>{f.current_kg != null ? `${f.current_kg} kg` : '—'}</span>
+                      <span>{f.estimated_depletion_weeks != null ? `~${f.estimated_depletion_weeks}w` : '—'}</span>
+                      <span className="capitalize">{f.risk_level}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {Array.isArray(forecastData.recommendations) && forecastData.recommendations.length > 0 && (
+              <ul className="space-y-1">
+                {forecastData.recommendations.map((r, i) => (
+                  <li key={i} className="text-sm text-coffee-600">· {r}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+        {forecastError && <p className="text-sm mt-3" style={{ color: '#A32D2D' }}>{forecastError}</p>}
+
+        {/* AI Yield Patterns panel */}
+        {showPatterns && patternsData && (
+          <div className="bg-white border border-coffee-200 rounded-xl p-5 mt-5">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs text-coffee-400 uppercase tracking-wide">Yield Variance Patterns</p>
+              <button onClick={() => setShowPatterns(false)} className="text-coffee-300 hover:text-coffee-600 text-lg leading-none">×</button>
+            </div>
+            <p className="text-sm text-coffee-800 mb-3">{patternsData.summary}</p>
+            {patternsData.avg_roast_loss_pct != null && (
+              <p className="text-xs text-coffee-500 mb-3">Average roast loss: <strong>{patternsData.avg_roast_loss_pct}%</strong></p>
+            )}
+            {Array.isArray(patternsData.patterns) && patternsData.patterns.map((p, i) => (
+              <div key={i} className="px-3 py-2 rounded-lg text-sm mb-2" style={{ background: '#F2EAE0', color: '#533A24' }}>
+                <span style={{ fontWeight: 500 }}>{p.pattern}</span>
+                {p.affected_sessions_count != null && <span className="text-coffee-400 ml-2">({p.affected_sessions_count} sessions)</span>}
+                {p.impact && <p className="text-xs text-coffee-500 mt-0.5">{p.impact}</p>}
+              </div>
+            ))}
+            {Array.isArray(patternsData.recommendations) && patternsData.recommendations.length > 0 && (
+              <ul className="space-y-1 mt-2">
+                {patternsData.recommendations.map((r, i) => (
+                  <li key={i} className="text-sm text-coffee-600">· {r}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+        {patternsError && <p className="text-sm mt-3" style={{ color: '#A32D2D' }}>{patternsError}</p>}
+
       </div>
     </Layout>
   );

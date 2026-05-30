@@ -37,6 +37,7 @@ import LabelPreview from './pages/labels/LabelPreview';
 
 // Public pages (no auth)
 import PublicAllocation from './pages/public/PublicAllocation';
+import PublicJournal    from './pages/public/PublicJournal';
 
 // Journal pages
 import JournalDashboard from './pages/journal/JournalDashboard';
@@ -65,6 +66,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/public/allocations/:id" element={<PublicAllocation />} />
+          <Route path="/public/journal/:code"  element={<PublicJournal />} />
 
           {/* Dashboard */}
           <Route path="/"          element={<P element={<Dashboard />} />} />

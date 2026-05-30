@@ -4,7 +4,7 @@ import Layout from '../../components/Layout';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { Button, ProcessBadge } from '../../components/ui';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp, Wand2 } from 'lucide-react';
 
 const TZ = 'Asia/Vientiane';
 const DOC_TYPES = ['field_notes', 'roast_log', 'cupping_record', 'allocation_record'];
@@ -53,6 +53,9 @@ export default function JournalEntry() {
   const [saveStatus, setSaveStatus] = useState('');
   const [actioning,  setActioning]  = useState(false);
   const [actionError, setActionError] = useState('');
+
+  const [aiDrafting,   setAiDrafting]   = useState(false);
+  const [aiDraftError, setAiDraftError] = useState('');
 
   const [publishModal,       setPublishModal]       = useState(false);
   const [editPublishedModal, setEditPublishedModal] = useState(false);
@@ -118,6 +121,20 @@ export default function JournalEntry() {
     if (res.ok) { setEditPublishedModal(false); load(); }
     else { const d = await res.json(); setEditError(d.error || 'Failed.'); }
     setEditSaving(false);
+  }
+
+  async function generateAiDraft() {
+    setAiDrafting(true); setAiDraftError('');
+    try {
+      const res = await api.post('/ai/journal-draft', { allocation_id, doc_type: type });
+      const d   = await res.json();
+      if (!res.ok) { setAiDraftError(d.error || 'AI failed.'); return; }
+      setContent(d.draft || '');
+    } catch {
+      setAiDraftError('Network error.');
+    } finally {
+      setAiDrafting(false);
+    }
   }
 
   async function deleteDraft() {
@@ -209,16 +226,31 @@ export default function JournalEntry() {
             <>
               <div className="flex items-center justify-between mb-3">
                 <p className="text-xs text-coffee-400 uppercase tracking-wide">Content</p>
-                <span
-                  className="text-xs transition-opacity duration-200"
-                  style={{
-                    opacity: saveStatus ? 1 : 0,
-                    color: saveStatus === 'saved' ? '#3B6D11' : '#A8896A',
-                  }}
-                >
-                  {saveStatus === 'saving' ? 'Saving…' : 'Saved'}
-                </span>
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={generateAiDraft}
+                    disabled={aiDrafting}
+                    title="Generate an AI-written draft using all available allocation data"
+                  >
+                    <Wand2 size={13} className="mr-1" />
+                    {aiDrafting ? 'Generating…' : 'AI Draft'}
+                  </Button>
+                  <span
+                    className="text-xs transition-opacity duration-200"
+                    style={{
+                      opacity: saveStatus ? 1 : 0,
+                      color: saveStatus === 'saved' ? '#3B6D11' : '#A8896A',
+                    }}
+                  >
+                    {saveStatus === 'saving' ? 'Saving…' : 'Saved'}
+                  </span>
+                </div>
               </div>
+              {aiDraftError && (
+                <p className="text-xs mb-2" style={{ color: '#A32D2D' }}>{aiDraftError}</p>
+              )}
               <textarea
                 value={content}
                 onChange={e => setContent(e.target.value)}

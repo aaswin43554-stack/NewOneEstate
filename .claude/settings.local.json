@@ -27,7 +27,15 @@
       "mcp__plugin_supabase_supabase__get_project_url",
       "mcp__plugin_supabase_supabase__apply_migration",
       "PowerShell(Get-NetTCPConnection *)",
-      "PowerShell(Test-NetConnection *)"
+      "PowerShell(Test-NetConnection *)",
+      "Bash(Get-ChildItem -Recurse -Include \"*.js\", \"*.ts\" -Name)",
+      "WebFetch(domain:github.com)",
+      "WebSearch",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\aaswi\\\\OneDrive\\\\Desktop\\\\Work\\\\NewOneEstate\" -Recurse -Directory)",
+      "Bash(Select-Object -First 20)",
+      "Bash(dir /b \"C:\\\\Users\\\\aaswi\\\\OneDrive\\\\Desktop\\\\Work\\\\NewOneEstate\\\\client\\\\src\")",
+      "Skill(claude-api)",
+      "Bash(npx tsc *)"
     ]
   }
 }

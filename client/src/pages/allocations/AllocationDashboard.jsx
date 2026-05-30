@@ -152,6 +152,19 @@ function KanbanColumn({ column, allocations, onCardClick }) {
   );
 }
 
+async function triggerExport(format) {
+  const res  = await api.get(`/export/allocations?format=${format}`);
+  const blob = await res.blob();
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = `allocations-${new Date().toISOString().split('T')[0]}.${format}`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 export default function AllocationDashboard() {
   const [allocations, setAllocations] = useState([]);
   const [loading,     setLoading]     = useState(true);
@@ -177,9 +190,11 @@ export default function AllocationDashboard() {
           title="Allocations"
           subtitle={`${allocations.length} total`}
           actions={
-            <Button variant="primary" onClick={() => navigate('/allocations/new')}>
-              + New Allocation
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => triggerExport('csv')}>CSV</Button>
+              <Button variant="ghost" onClick={() => triggerExport('json')}>JSON</Button>
+              <Button variant="primary" onClick={() => navigate('/allocations/new')}>+ New Allocation</Button>
+            </div>
           }
         />
 

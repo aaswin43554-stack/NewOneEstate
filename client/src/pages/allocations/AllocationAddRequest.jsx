@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
 
@@ -15,6 +15,51 @@ export default function AllocationAddRequest() {
   const [saving,   setSaving]   = useState(false);
   const [error,    setError]    = useState('');
   const [success,  setSuccess]  = useState(null);
+
+  // Contact lookup state
+  const [contacts,       setContacts]       = useState([]);
+  const [allocation,     setAllocation]     = useState(null);
+  const [contactSearch,  setContactSearch]  = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedContact, setSelectedContact] = useState(null);
+
+  useEffect(() => {
+    api.get('/contacts').then(r => r.json()).then(d => setContacts(d.contacts || [])).catch(() => {});
+    api.get(`/allocations/${id}`).then(r => r.json()).then(d => setAllocation(d.allocation || null)).catch(() => {});
+  }, [id]);
+
+  const suggestions = useMemo(() => {
+    if (!contactSearch.trim()) return [];
+    const q = contactSearch.toLowerCase();
+    return contacts.filter(c => c.name.toLowerCase().includes(q)).slice(0, 6);
+  }, [contacts, contactSearch]);
+
+  function selectContact(contact) {
+    setSelectedContact(contact);
+    setForm(p => ({
+      ...p,
+      contact_name:   contact.name,
+      contact_method: contact.primary_contact_method || p.contact_method,
+    }));
+    setContactSearch(contact.name);
+    setShowSuggestions(false);
+  }
+
+  function clearContact() {
+    setSelectedContact(null);
+    setContactSearch('');
+    setForm(p => ({ ...p, contact_name: '', contact_method: '' }));
+  }
+
+  // Look up price per bag for the selected contact's market segment
+  const priceForContact = useMemo(() => {
+    if (!selectedContact || !allocation?.planned_price_json) return null;
+    const priceMap = typeof allocation.planned_price_json === 'string'
+      ? JSON.parse(allocation.planned_price_json)
+      : allocation.planned_price_json;
+    const seg = selectedContact.market_segment;
+    return seg && priceMap[seg] != null ? { segment: seg, price: priceMap[seg] } : null;
+  }, [selectedContact, allocation]);
 
   function set(key, val) { setForm(p => ({ ...p, [key]: val })); }
 
@@ -38,6 +83,8 @@ export default function AllocationAddRequest() {
     setForm({ contact_name:'', contact_method:'', channel:'', quantity_bags:1, notes:'' });
     setSuccess(null);
     setError('');
+    setSelectedContact(null);
+    setContactSearch('');
   }
 
   if (success) {
@@ -73,14 +120,62 @@ export default function AllocationAddRequest() {
       </div>
 
       <form onSubmit={handleSubmit} className="flex-1 px-5 pt-6 pb-28 space-y-5">
-        {/* Contact name */}
+        {/* Contact search */}
         <div>
-          <label className="block text-base font-semibold text-coffee-800 mb-2">Contact Name</label>
-          <input value={form.contact_name}
-            onChange={e => set('contact_name', e.target.value)}
-            placeholder="Full name"
-            className="w-full text-lg border-2 border-coffee-300 rounded-xl px-4 py-4 focus:border-coffee-600 outline-none"
-            required />
+          <label className="block text-base font-semibold text-coffee-800 mb-2">Contact</label>
+          <div className="relative">
+            <input
+              value={contactSearch}
+              onChange={e => {
+                setContactSearch(e.target.value);
+                setForm(p => ({ ...p, contact_name: e.target.value }));
+                setSelectedContact(null);
+                setShowSuggestions(true);
+              }}
+              onFocus={() => setShowSuggestions(true)}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+              placeholder="Search contacts or enter name…"
+              className="w-full text-lg border-2 border-coffee-300 rounded-xl px-4 py-4 focus:border-coffee-600 outline-none"
+            />
+            {selectedContact && (
+              <button
+                type="button"
+                onClick={clearContact}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-coffee-400 hover:text-coffee-700 text-xl"
+              >
+                ×
+              </button>
+            )}
+            {showSuggestions && suggestions.length > 0 && (
+              <div className="absolute z-10 w-full mt-1 bg-white border border-coffee-200 rounded-xl shadow-lg overflow-hidden">
+                {suggestions.map(c => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onMouseDown={() => selectContact(c)}
+                    className="w-full text-left px-4 py-3 hover:bg-coffee-50 border-b border-coffee-100 last:border-0"
+                  >
+                    <p className="text-sm font-semibold text-coffee-900">{c.name}</p>
+                    <p className="text-xs text-coffee-400">
+                      {c.market_segment} · {c.primary_contact_method || '—'}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Price info for selected contact */}
+          {priceForContact && (
+            <div className="mt-2 px-3 py-2 rounded-lg text-sm" style={{ background: '#EAF3DE', color: '#3B6D11' }}>
+              {priceForContact.segment} price: <strong>${priceForContact.price}</strong> / bag
+            </div>
+          )}
+          {selectedContact && !priceForContact && allocation?.planned_price_json && (
+            <p className="mt-2 text-xs text-coffee-400">
+              No price set for {selectedContact.market_segment} segment in this allocation.
+            </p>
+          )}
         </div>
 
         {/* Contact method */}
@@ -130,6 +225,11 @@ export default function AllocationAddRequest() {
               +
             </button>
           </div>
+          {priceForContact && (
+            <p className="mt-2 text-sm text-coffee-500">
+              Total: <strong className="text-coffee-800">${(priceForContact.price * form.quantity_bags).toLocaleString()}</strong>
+            </p>
+          )}
         </div>
 
         {error && <p className="text-red-600 text-sm">{error}</p>}

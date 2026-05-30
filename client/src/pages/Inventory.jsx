@@ -95,6 +95,19 @@ export default function Inventory() {
 
   const canWrite = user?.role === 'admin' || user?.role === 'roaster';
 
+  async function triggerExport(format) {
+    const res  = await api.get(`/export/lots?format=${format}`);
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = `lots-${new Date().toISOString().split('T')[0]}.${format}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   const fetchLots = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -141,11 +154,13 @@ export default function Inventory() {
           title="Inventory"
           subtitle={loading ? 'Loading…' : `${filtered.length} lot${filtered.length !== 1 ? 's' : ''}`}
           actions={
-            canWrite && (
-              <Button variant="primary" onClick={() => setShowModal(true)}>
-                + New Lot
-              </Button>
-            )
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => triggerExport('csv')}>CSV</Button>
+              <Button variant="ghost" onClick={() => triggerExport('json')}>JSON</Button>
+              {canWrite && (
+                <Button variant="primary" onClick={() => setShowModal(true)}>+ New Lot</Button>
+              )}
+            </div>
           }
         />
 

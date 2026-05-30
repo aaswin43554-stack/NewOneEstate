@@ -143,6 +143,38 @@ router.put('/:id/transition', requireRole('admin', 'roaster'), async (req, res) 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    // Auto-reserve green stock when opening for requests (skip if already reserved)
+    if (next_state === 'open_for_requests' && alloc.lot_id) {
+      const { rows: existing } = await client.query(
+        `SELECT id FROM oec_lot_movements
+         WHERE lot_id = $1 AND movement_type = 'reservation' AND authorised_by IS NOT NULL`,
+        [alloc.lot_id]
+      );
+      if (existing.length === 0) {
+        const { rows: [lot] } = await client.query(
+          'SELECT current_weight_g FROM oec_lots WHERE id = $1 FOR UPDATE',
+          [alloc.lot_id]
+        );
+        const newWeight = lot.current_weight_g - alloc.planned_green_quantity_g;
+        if (newWeight < 0) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: 'Insufficient green stock to reserve.' });
+        }
+        await client.query(
+          'UPDATE oec_lots SET current_weight_g = $1, updated_at = NOW(), updated_by = $2 WHERE id = $3',
+          [newWeight, req.user.id, alloc.lot_id]
+        );
+        await client.query(
+          `INSERT INTO oec_lot_movements
+             (tenant_id, lot_id, movement_type, weight_change_g, reason, authorised_by, created_by)
+           VALUES ($1, $2, 'reservation', $3, $4, $5, $5)`,
+          [tenant_id, alloc.lot_id, -alloc.planned_green_quantity_g,
+           `Auto-reserved for allocation ${alloc.allocation_code}`, req.user.id]
+        );
+      }
+    }
+
     const { rows: [updated] } = await client.query(
       `UPDATE oec_allocations SET state = $1, updated_at = NOW(), updated_by = $2 WHERE id = $3 RETURNING *`,
       [next_state, req.user.id, alloc.id]

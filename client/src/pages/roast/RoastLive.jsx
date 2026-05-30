@@ -92,6 +92,7 @@ export default function RoastLive() {
   });
   const [error,  setError]  = useState('');
   const [saving, setSaving] = useState(false);
+  const [hwLost, setHwLost] = useState(false);
 
   const wsRef    = useRef(null);
   const timerRef = useRef(null);
@@ -135,6 +136,10 @@ export default function RoastLive() {
       if (data.t !== undefined) {
         setPoints(prev => [...prev, { t: data.t, temp: data.temp }]);
         setCurrentTemp(data.temp);
+      } else if (data.event === 'eject_suggested') {
+        setCompleteOpen(true);
+      } else if (data.event === 'hardware_disconnected') {
+        setHwLost(true);
       }
     };
     return () => ws.close();
@@ -211,6 +216,17 @@ export default function RoastLive() {
             <span className="text-xs text-coffee-500">Live</span>
           </div>
         </div>
+
+        {/* Hardware disconnected banner */}
+        {hwLost && (
+          <div
+            className="mb-4 px-4 py-3 rounded-xl text-sm flex items-center justify-between"
+            style={{ background: '#FEF3C7', color: '#92400E' }}
+          >
+            <span>Hardware disconnected — temperature data unavailable. Reconnect the roaster and refresh.</span>
+            <button onClick={() => setHwLost(false)} className="ml-4 text-xs underline">Dismiss</button>
+          </div>
+        )}
 
         {/* Variance banner */}
         {varianceBanner && (

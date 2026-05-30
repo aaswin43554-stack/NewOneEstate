@@ -104,6 +104,19 @@ function ContactCard({ contact, onClick }) {
   );
 }
 
+async function triggerExport(format) {
+  const res  = await api.get(`/export/contacts?format=${format}`);
+  const blob = await res.blob();
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = `contacts-${new Date().toISOString().split('T')[0]}.${format}`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 export default function ContactList() {
   const [contacts,     setContacts]     = useState([]);
   const [loading,      setLoading]      = useState(true);
@@ -133,9 +146,11 @@ export default function ContactList() {
           title="Contacts"
           subtitle={`${filtered.length} contact${filtered.length !== 1 ? 's' : ''}`}
           actions={
-            <Button variant="primary" onClick={() => navigate('/contacts/new')}>
-              + New Contact
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => triggerExport('csv')}>CSV</Button>
+              <Button variant="ghost" onClick={() => triggerExport('json')}>JSON</Button>
+              <Button variant="primary" onClick={() => navigate('/contacts/new')}>+ New Contact</Button>
+            </div>
           }
         />
 

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Wand2 } from 'lucide-react';
 import Layout from '../../components/Layout';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
@@ -45,11 +46,14 @@ export default function RoastDetail() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const [session,    setSession]    = useState(null);
-  const [notes,      setNotes]      = useState([]);
-  const [loading,    setLoading]    = useState(true);
-  const [confirming, setConfirming] = useState(null);
-  const [saving,     setSaving]     = useState(false);
+  const [session,      setSession]      = useState(null);
+  const [notes,        setNotes]        = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [confirming,   setConfirming]   = useState(null);
+  const [saving,       setSaving]       = useState(false);
+  const [anomalyData,  setAnomalyData]  = useState(null);
+  const [anomalyLoading, setAnomalyLoading] = useState(false);
+  const [anomalyError, setAnomalyError] = useState('');
 
   function load() {
     setLoading(true);
@@ -65,7 +69,22 @@ export default function RoastDetail() {
     const res = await api.put(`/roast-sessions/${id}/status`, { status });
     const d   = await res.json();
     if (res.ok) { setSession(d.session); setConfirming(null); }
+    else { alert(d.error || 'Failed to update status.'); }
     setSaving(false);
+  }
+
+  async function analyzeAnomalies() {
+    setAnomalyLoading(true); setAnomalyError(''); setAnomalyData(null);
+    try {
+      const res = await api.post('/ai/roast-anomaly', { session_id: id });
+      const d   = await res.json();
+      if (!res.ok) { setAnomalyError(d.error || 'AI failed.'); return; }
+      setAnomalyData(d.analysis);
+    } catch {
+      setAnomalyError('Network error.');
+    } finally {
+      setAnomalyLoading(false);
+    }
   }
 
   if (loading) return <Layout><div className="px-6 py-6 text-sm text-coffee-400">Loading…</div></Layout>;
@@ -134,7 +153,13 @@ export default function RoastDetail() {
         {/* Curve chart */}
         {curve.length > 0 && (
           <div className="bg-white border border-coffee-200 rounded-xl p-5">
-            <p className="text-xs text-coffee-400 uppercase tracking-wide mb-4">Temperature Curve</p>
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-xs text-coffee-400 uppercase tracking-wide">Temperature Curve</p>
+              <Button variant="ghost" size="sm" onClick={analyzeAnomalies} disabled={anomalyLoading}>
+                <Wand2 size={13} className="mr-1" />
+                {anomalyLoading ? 'Analyzing…' : 'Analyze'}
+              </Button>
+            </div>
             <ResponsiveContainer width="100%" height={200}>
               <LineChart data={curve} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
                 <CartesianGrid strokeDasharray="0" stroke="#F2EAE0" />
@@ -163,6 +188,45 @@ export default function RoastDetail() {
                 />
               </LineChart>
             </ResponsiveContainer>
+          </div>
+        )}
+
+        {/* AI Anomaly results */}
+        {(anomalyError || anomalyData) && (
+          <div className="bg-white border border-coffee-200 rounded-xl p-5 space-y-3">
+            <p className="text-xs text-coffee-400 uppercase tracking-wide">AI Anomaly Analysis</p>
+            {anomalyError && <p className="text-sm" style={{ color: '#A32D2D' }}>{anomalyError}</p>}
+            {anomalyData && (
+              <>
+                <p className="text-sm text-coffee-800">{anomalyData.overall_assessment}</p>
+                {anomalyData.anomalies?.length > 0 ? (
+                  <div className="space-y-2">
+                    {anomalyData.anomalies.map((a, i) => {
+                      const bg    = a.severity === 'high' ? '#FCEBEB' : a.severity === 'medium' ? '#FAEEDA' : '#F2EAE0';
+                      const color = a.severity === 'high' ? '#A32D2D' : a.severity === 'medium' ? '#BA7517' : '#8B6A47';
+                      return (
+                        <div key={i} className="px-3 py-2 rounded-lg text-sm" style={{ background: bg, color }}>
+                          <span style={{ fontWeight: 500, textTransform: 'capitalize' }}>{a.type}</span>
+                          {' — '}{a.description}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm" style={{ color: '#3B6D11' }}>No significant anomalies detected.</p>
+                )}
+                {anomalyData.recommendations?.length > 0 && (
+                  <div>
+                    <p className="text-xs text-coffee-400 mb-1">Recommendations</p>
+                    <ul className="space-y-1">
+                      {anomalyData.recommendations.map((r, i) => (
+                        <li key={i} className="text-sm text-coffee-700">· {r}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
 

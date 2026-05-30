@@ -75,6 +75,19 @@ const COLUMNS = [
   },
 ];
 
+async function triggerExport(format) {
+  const res  = await api.get(`/export/cupping?format=${format}`);
+  const blob = await res.blob();
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = `cupping-${new Date().toISOString().split('T')[0]}.${format}`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 export default function CuppingList() {
   const [sessions, setSessions] = useState([]);
   const [loading,  setLoading]  = useState(true);
@@ -98,12 +111,10 @@ export default function CuppingList() {
           subtitle={`${sessions.length} session${sessions.length !== 1 ? 's' : ''}`}
           actions={
             <div className="flex gap-2">
-              <Button variant="secondary" onClick={() => navigate('/cupping/compare')}>
-                Compare
-              </Button>
-              <Button variant="primary" onClick={() => navigate('/cupping/new')}>
-                + New Session
-              </Button>
+              <Button variant="ghost" onClick={() => triggerExport('csv')}>CSV</Button>
+              <Button variant="ghost" onClick={() => triggerExport('json')}>JSON</Button>
+              <Button variant="secondary" onClick={() => navigate('/cupping/compare')}>Compare</Button>
+              <Button variant="primary" onClick={() => navigate('/cupping/new')}>+ New Session</Button>
             </div>
           }
         />

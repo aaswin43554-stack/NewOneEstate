@@ -37,7 +37,9 @@ const cuppingRoutes       = require('./routes/cupping');
 const labelRoutes         = require('./routes/labels');
 const contactRoutes       = require('./routes/contacts');
 const journalRoutes       = require('./routes/journal');
-const { setupRoastWebSocket } = require('./services/roastHardwareMock');
+const exportRoutes        = require('./routes/export');
+const aiRoutes            = require('./routes/ai');
+const { setupRoastWebSocket } = require('./services/roastHardware');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
@@ -80,6 +82,8 @@ app.use('/api/cupping-sessions', cuppingRoutes);
 app.use('/api/labels',           labelRoutes);
 app.use('/api/contacts',         contactRoutes);
 app.use('/api/journal',          journalRoutes);
+app.use('/api/export',           exportRoutes);
+app.use('/api/ai',               aiRoutes);
 
 // Dashboard Stats Endpoint
 app.get('/api/dashboard-stats', requireAuth, async (req, res) => {
@@ -92,14 +96,16 @@ app.get('/api/dashboard-stats', requireAuth, async (req, res) => {
       { rows: [{ total_contacts }] },
       { rows: [{ total_roasts }] },
       { rows: [{ requested_bags }] },
-      { rows: activeAllocsList }
+      { rows: activeAllocsList },
+      { rows: [{ quality_alert_lots }] },
     ] = await Promise.all([
       pool.query("SELECT COALESCE(SUM(current_weight_g), 0)::bigint AS total_stock FROM oec_lots WHERE tenant_id = $1 AND deleted_at IS NULL", [tenant_id]),
       pool.query("SELECT COUNT(*)::int AS active_allocs FROM oec_allocations WHERE tenant_id = $1 AND state != 'archived' AND deleted_at IS NULL", [tenant_id]),
       pool.query("SELECT COUNT(*)::int AS total_contacts FROM oec_contacts WHERE tenant_id = $1 AND deleted_at IS NULL", [tenant_id]),
       pool.query("SELECT COUNT(*)::int AS total_roasts FROM oec_roast_sessions WHERE tenant_id = $1 AND deleted_at IS NULL", [tenant_id]),
       pool.query("SELECT COALESCE(SUM(quantity_bags), 0)::int AS requested_bags FROM oec_allocation_requests WHERE tenant_id = $1 AND status != 'fulfilled'", [tenant_id]),
-      pool.query("SELECT allocation_code, state, process FROM oec_allocations WHERE tenant_id = $1 AND state = 'open_for_requests' AND deleted_at IS NULL LIMIT 1", [tenant_id])
+      pool.query("SELECT allocation_code, state, process FROM oec_allocations WHERE tenant_id = $1 AND state = 'open_for_requests' AND deleted_at IS NULL LIMIT 1", [tenant_id]),
+      pool.query("SELECT COUNT(*)::int AS quality_alert_lots FROM oec_lots WHERE tenant_id = $1 AND deleted_at IS NULL AND current_weight_g > 0 AND arrival_date < NOW() - INTERVAL '365 days'", [tenant_id]),
     ]);
 
     console.log(`[DASHBOARD] OK — tenant ${tenant_id} | stock: ${total_stock}g | allocs: ${active_allocs} | contacts: ${total_contacts} | roasts: ${total_roasts}`);
@@ -109,7 +115,8 @@ app.get('/api/dashboard-stats', requireAuth, async (req, res) => {
       totalContactsCount: total_contacts,
       totalRoastsCount: total_roasts,
       totalBagsRequested: requested_bags,
-      activeAllocation: activeAllocsList[0] || null
+      activeAllocation: activeAllocsList[0] || null,
+      qualityAlertLotsCount: quality_alert_lots,
     });
   } catch (err) {
     // DASH_001: DB error fetching one or more dashboard stat queries

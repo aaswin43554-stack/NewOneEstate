@@ -86,6 +86,20 @@ async function checkTransitionPreconditions(allocation, to_state, tenant_id) {
       reason: passed ? null :
         `No approved roast profile exists for ${process}. Create and approve a profile first.`,
     });
+
+    if (lot_id) {
+      const { rows: [lotRow] } = await pool.query(
+        'SELECT current_weight_g FROM oec_lots WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
+        [lot_id, tenant_id]
+      );
+      const available = lotRow?.current_weight_g ?? 0;
+      checks.push({
+        label: 'Green stock available',
+        passed: available >= planned_green_quantity_g,
+        reason: available >= planned_green_quantity_g ? null :
+          `Insufficient green stock. Available: ${available}g, need: ${planned_green_quantity_g}g.`,
+      });
+    }
   }
 
   if (from_state === 'closed' && to_state === 'roasting_in_progress') {
