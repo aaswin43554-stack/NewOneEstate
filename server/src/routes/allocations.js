@@ -148,8 +148,9 @@ router.put('/:id/transition', requireRole('admin', 'roaster'), async (req, res) 
     if (next_state === 'open_for_requests' && alloc.lot_id) {
       const { rows: existing } = await client.query(
         `SELECT id FROM oec_lot_movements
-         WHERE lot_id = $1 AND movement_type = 'reservation' AND authorised_by IS NOT NULL`,
-        [alloc.lot_id]
+         WHERE lot_id = $1 AND movement_type = 'reservation'
+           AND reason = $2`,
+        [alloc.lot_id, `Auto-reserved for allocation ${alloc.allocation_code}`]
       );
       if (existing.length === 0) {
         const { rows: [lot] } = await client.query(
