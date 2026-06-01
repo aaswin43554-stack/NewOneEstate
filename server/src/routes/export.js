@@ -100,11 +100,11 @@ const MODULES = {
 
   profiles: async (tenant_id) => {
     const { rows } = await pool.query(
-      `SELECT profile_name, process, status,
-              charge_temp_c, eject_temp_c, total_time_seconds,
-              development_time_seconds, target_dtr,
+      `SELECT process, harvest_year, status, estate,
+              charge_temp_c, eject_temp_c, total_time_target_s,
+              target_dtr, flavour_target,
               created_at, approved_at
-       FROM oec_roast_profiles WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY process, profile_name`,
+       FROM oec_roast_profiles WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY process, harvest_year`,
       [tenant_id]
     );
     return rows;

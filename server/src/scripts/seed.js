@@ -21,7 +21,12 @@ async function seed() {
       [DEMO_EMAIL]
     );
     if (existing.length > 0) {
-      console.log('[seed] Demo account already exists — skipping.');
+      const hash = await bcrypt.hash(DEMO_PASSWORD, 12);
+      await client.query(
+        'UPDATE oec_users SET password_hash = $1 WHERE email = $2',
+        [hash, DEMO_EMAIL]
+      );
+      console.log('[seed] Demo account password re-synced.');
       return;
     }
 
