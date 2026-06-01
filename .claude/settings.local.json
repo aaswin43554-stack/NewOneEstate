@@ -36,7 +36,8 @@
       "Bash(dir /b \"C:\\\\Users\\\\aaswi\\\\OneDrive\\\\Desktop\\\\Work\\\\NewOneEstate\\\\client\\\\src\")",
       "Skill(claude-api)",
       "Bash(npx tsc *)",
-      "Bash(dir C:\\\\Users\\\\aaswi\\\\OneDrive\\\\Desktop\\\\Work\\\\NewOneEstate\\\\client\\\\src\\\\pages *)"
+      "Bash(dir C:\\\\Users\\\\aaswi\\\\OneDrive\\\\Desktop\\\\Work\\\\NewOneEstate\\\\client\\\\src\\\\pages *)",
+      "Bash(npx vite *)"
     ]
   }
 }
