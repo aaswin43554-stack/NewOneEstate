@@ -28,6 +28,7 @@ const MOVEMENT_META = {
 };
 
 const INIT_MOVE = { movement_type: 'reservation', weight_kg: '', reason: '' };
+const PROCESSES = ['Washed', 'Honey', 'Natural', 'Anaerobic'];
 
 export default function LotDetail() {
   const { id } = useParams();
@@ -42,7 +43,14 @@ export default function LotDetail() {
   const [moveError,   setMoveError]   = useState('');
   const [moveLoading, setMoveLoading] = useState(false);
 
+  const [editing,     setEditing]     = useState(false);
+  const [editForm,    setEditForm]    = useState({});
+  const [editError,   setEditError]   = useState('');
+  const [editLoading, setEditLoading] = useState(false);
+  const [deleting,    setDeleting]    = useState(false);
+
   const canWrite = user?.role === 'admin' || user?.role === 'roaster';
+  const isAdmin  = user?.role === 'admin';
 
   const fetchLot = useCallback(async () => {
     setLoading(true);
@@ -61,6 +69,63 @@ export default function LotDetail() {
   }, [id]);
 
   useEffect(() => { fetchLot(); }, [fetchLot]);
+
+  function openEdit() {
+    setEditForm({
+      lot_code:         lot.lot_code,
+      estate:           lot.estate,
+      process:          lot.process,
+      harvest_year:     String(lot.harvest_year),
+      arrival_date:     lot.arrival_date ? lot.arrival_date.slice(0, 10) : '',
+      storage_location: lot.storage_location || '',
+      moisture_content: lot.moisture_content != null ? String(lot.moisture_content) : '',
+      water_activity:   lot.water_activity   != null ? String(lot.water_activity)   : '',
+      supplier_notes:   lot.supplier_notes   || '',
+    });
+    setEditError('');
+    setEditing(true);
+  }
+
+  async function handleEdit(e) {
+    e.preventDefault();
+    setEditError('');
+    setEditLoading(true);
+    try {
+      const body = {
+        lot_code:         editForm.lot_code,
+        estate:           editForm.estate,
+        process:          editForm.process,
+        harvest_year:     parseInt(editForm.harvest_year),
+        arrival_date:     editForm.arrival_date,
+        storage_location: editForm.storage_location,
+        moisture_content: editForm.moisture_content !== '' ? parseFloat(editForm.moisture_content) : null,
+        water_activity:   editForm.water_activity   !== '' ? parseFloat(editForm.water_activity)   : null,
+        supplier_notes:   editForm.supplier_notes || null,
+      };
+      const res = await api.put(`/lots/${id}`, body);
+      const data = await res.json();
+      if (!res.ok) { setEditError(data.error || 'Failed to update.'); return; }
+      setLot(data.lot);
+      setEditing(false);
+    } catch {
+      setEditError('Network error.');
+    } finally {
+      setEditLoading(false);
+    }
+  }
+
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      const res = await api.delete(`/lots/${id}`);
+      if (!res.ok) { const d = await res.json(); alert(d.error || 'Failed to delete.'); return; }
+      navigate('/inventory');
+    } catch {
+      alert('Network error.');
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   async function handleMovement(e) {
     e.preventDefault();
@@ -129,12 +194,28 @@ export default function LotDetail() {
                 {lot.estate} · Harvest {lot.harvest_year}
               </p>
             </div>
-            <div className="text-right">
-              <p className="text-xs text-coffee-400 uppercase tracking-wide mb-1">Current Stock</p>
-              <p className="text-2xl text-coffee-900" style={{ fontWeight: 500 }}>
-                {gToKg(lot.current_weight_g)}
-                <span className="text-sm text-coffee-400" style={{ fontWeight: 400 }}> kg</span>
-              </p>
+            <div className="flex items-start gap-3">
+              {isAdmin && (
+                <>
+                  <Button variant="secondary" size="sm" onClick={openEdit}>Edit</Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={deleting}
+                    onClick={() => { if (window.confirm(`Delete lot ${lot.lot_code}? This cannot be undone.`)) handleDelete(); }}
+                    style={{ color: '#A32D2D', borderColor: '#F5C6C6' }}
+                  >
+                    {deleting ? 'Deleting…' : 'Delete'}
+                  </Button>
+                </>
+              )}
+              <div className="text-right">
+                <p className="text-xs text-coffee-400 uppercase tracking-wide mb-1">Current Stock</p>
+                <p className="text-2xl text-coffee-900" style={{ fontWeight: 500 }}>
+                  {gToKg(lot.current_weight_g)}
+                  <span className="text-sm text-coffee-400" style={{ fontWeight: 400 }}> kg</span>
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -281,6 +362,46 @@ export default function LotDetail() {
           )}
         </div>
       </div>
+
+      {/* Edit overlay */}
+      {editing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(34,21,8,0.35)' }}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-coffee-200">
+              <h2 className="text-base text-coffee-900" style={{ fontWeight: 500 }}>Edit Lot</h2>
+              <button onClick={() => setEditing(false)} className="text-coffee-400 hover:text-coffee-700 text-lg">✕</button>
+            </div>
+            <form onSubmit={handleEdit} className="px-6 py-5 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <FormInput label="Lot Code" value={editForm.lot_code} onChange={e => setEditForm(f => ({ ...f, lot_code: e.target.value }))} required />
+                <FormInput label="Estate" value={editForm.estate} onChange={e => setEditForm(f => ({ ...f, estate: e.target.value }))} required />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <FormSelect label="Process" value={editForm.process} onChange={e => setEditForm(f => ({ ...f, process: e.target.value }))} required>
+                  {PROCESSES.map(p => <option key={p} value={p}>{p}</option>)}
+                </FormSelect>
+                <FormInput label="Harvest Year" type="number" value={editForm.harvest_year} onChange={e => setEditForm(f => ({ ...f, harvest_year: e.target.value }))} required />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <FormInput label="Arrival Date" type="date" value={editForm.arrival_date} onChange={e => setEditForm(f => ({ ...f, arrival_date: e.target.value }))} required />
+                <FormInput label="Storage Location" value={editForm.storage_location} onChange={e => setEditForm(f => ({ ...f, storage_location: e.target.value }))} required />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <FormInput label="Moisture Content (%)" type="number" step="0.01" value={editForm.moisture_content} onChange={e => setEditForm(f => ({ ...f, moisture_content: e.target.value }))} placeholder="optional" />
+                <FormInput label="Water Activity" type="number" step="0.001" value={editForm.water_activity} onChange={e => setEditForm(f => ({ ...f, water_activity: e.target.value }))} placeholder="optional" />
+              </div>
+              <FormInput label="Supplier Notes" value={editForm.supplier_notes} onChange={e => setEditForm(f => ({ ...f, supplier_notes: e.target.value }))} placeholder="optional" />
+              {editError && <p className="text-xs" style={{ color: '#A32D2D' }}>{editError}</p>}
+              <div className="flex gap-3 pt-1">
+                <Button type="submit" disabled={editLoading} className="flex-1 justify-center">
+                  {editLoading ? 'Saving…' : 'Save Changes'}
+                </Button>
+                <Button type="button" variant="secondary" onClick={() => setEditing(false)}>Cancel</Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }

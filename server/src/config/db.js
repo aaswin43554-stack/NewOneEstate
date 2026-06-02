@@ -7,9 +7,11 @@ if (!process.env.DATABASE_URL) {
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL?.includes('supabase') ? { rejectUnauthorized: false } : false,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
+  max: 10,
+  idleTimeoutMillis: 600000,  // 10 min — keep connections alive across idle periods
+  connectionTimeoutMillis: 20000, // 20s — enough for India→Singapore first connect
+  keepAlive: true,
+  keepAliveInitialDelayMillis: 10000,
 });
 
 // Set search_path on every new physical connection.

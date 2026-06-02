@@ -256,7 +256,32 @@ router.put('/:id/requests/:req_id', requireRole('admin', 'roaster'), async (req,
   );
   if (!request) return res.status(404).json({ error: 'Request not found.' });
 
-  const { status: newStatus } = req.body;
+  const { status: newStatus, quantity_bags, contact_name, channel, notes } = req.body;
+
+  // Field edit (no status change) — admin only
+  if (!newStatus && (quantity_bags !== undefined || contact_name !== undefined || channel !== undefined || notes !== undefined)) {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Only admins can edit request fields.' });
+    const updates = [];
+    const params  = [];
+    if (quantity_bags !== undefined) { params.push(parseInt(quantity_bags)); updates.push(`quantity_bags = $${params.length}`); }
+    if (contact_name  !== undefined) { params.push(contact_name);            updates.push(`contact_name = $${params.length}`);  }
+    if (channel       !== undefined) { params.push(channel);                 updates.push(`channel = $${params.length}`);       }
+    if (notes         !== undefined) { params.push(notes || null);           updates.push(`notes = $${params.length}`);         }
+    params.push(req.user.id); updates.push(`updated_by = $${params.length}`, 'updated_at = NOW()');
+    params.push(request.id);
+    try {
+      const { rows: [updated] } = await pool.query(
+        `UPDATE oec_allocation_requests SET ${updates.join(', ')} WHERE id = $${params.length} RETURNING *`,
+        params
+      );
+      return res.json({ request: updated });
+    } catch (err) {
+      console.error('Edit request fields:', err);
+      return res.status(500).json({ error: 'Failed to update request.' });
+    }
+  }
+
+  // Status transition
   const allowed = { pending: ['confirmed'], confirmed: ['fulfilled'] };
   if (!allowed[request.status] || !allowed[request.status].includes(newStatus)) {
     return res.status(400).json({ error: `Cannot transition from '${request.status}' to '${newStatus}'.` });

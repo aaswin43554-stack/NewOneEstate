@@ -60,6 +60,8 @@ export default function AllocationDetail() {
   const [reqError,  setReqError]  = useState('');
   const [rowErrors,    setRowErrors]    = useState({});
   const [rowActioning, setRowActioning] = useState({});
+  const [editingReq,   setEditingReq]   = useState(null); // { id, quantity_bags }
+  const [editReqSaving, setEditReqSaving] = useState(false);
   const [journalDocs,       setJournalDocs]       = useState(null);
   const [journalLoading,    setJournalLoading]    = useState(false);
   const [journalGenerating, setJournalGenerating] = useState(false);
@@ -133,6 +135,17 @@ export default function AllocationDetail() {
     setRowActioning(p => ({ ...p, [reqId]: false }));
   }
 
+  async function saveReqEdit(reqId) {
+    setEditReqSaving(true);
+    const res = await api.put(`/allocations/${id}/requests/${reqId}`, {
+      quantity_bags: parseInt(editingReq.quantity_bags),
+    });
+    const d = await res.json();
+    if (res.ok) { setEditingReq(null); load(); }
+    else { setRowErrors(p => ({ ...p, [reqId]: d.error })); }
+    setEditReqSaving(false);
+  }
+
   if (loading) return <Layout><div className="px-6 py-6 text-sm text-coffee-400">Loading…</div></Layout>;
   if (!data)   return <Layout><div className="px-6 py-6 text-sm" style={{ color: '#A32D2D' }}>Allocation not found.</div></Layout>;
 
@@ -194,7 +207,9 @@ export default function AllocationDetail() {
                     <Button variant="ghost" size="sm">Quick Add</Button>
                   </Link>
                   {a.state === 'closed' && (
-                    <span className="text-xs text-coffee-400 italic">admin override</span>
+                    <span className="text-xs text-coffee-400 italic" title="Adding requests after close is an admin-only action">
+                      Adding to closed allocation
+                    </span>
                   )}
                 </>
               )}
@@ -294,8 +309,19 @@ export default function AllocationDetail() {
                           {r.channel.replace('_', ' ')}
                         </span>
                       </td>
-                      <td className="py-2 text-right text-coffee-900" style={{ fontWeight: 500 }}>
-                        {r.quantity_bags}
+                      <td className="py-2 text-right">
+                        {isAdmin && !isArchived && editingReq?.id === r.id ? (
+                          <input
+                            type="number"
+                            min={1}
+                            value={editingReq.quantity_bags}
+                            onChange={e => setEditingReq(p => ({ ...p, quantity_bags: e.target.value }))}
+                            className="w-16 h-7 px-2 text-sm text-right border border-coffee-400 rounded-lg"
+                            autoFocus
+                          />
+                        ) : (
+                          <span className="text-coffee-900" style={{ fontWeight: 500 }}>{r.quantity_bags}</span>
+                        )}
                       </td>
                       <td className="py-2 pl-3">
                         <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full capitalize ${reqMeta.cls}`}>
@@ -306,27 +332,57 @@ export default function AllocationDetail() {
                         )}
                       </td>
                       {isAdmin && !isArchived && (
-                        <td className="py-2 text-right">
-                          {r.status === 'pending' && (
-                            <button
-                              onClick={() => updateReqStatus(r.id, 'confirmed')}
-                              disabled={!!rowActioning[r.id]}
-                              className="text-xs transition-colors disabled:opacity-40"
-                              style={{ color: '#3B6D11' }}
-                            >
-                              {rowActioning[r.id] ? '…' : 'Confirm'}
-                            </button>
-                          )}
-                          {r.status === 'confirmed' && (
-                            <button
-                              onClick={() => updateReqStatus(r.id, 'fulfilled')}
-                              disabled={!!rowActioning[r.id]}
-                              className="text-xs transition-colors disabled:opacity-40"
-                              style={{ color: '#185FA5' }}
-                            >
-                              {rowActioning[r.id] ? '…' : 'Fulfil'}
-                            </button>
-                          )}
+                        <td className="py-2 text-right whitespace-nowrap">
+                          <div className="flex items-center justify-end gap-3">
+                            {editingReq?.id === r.id ? (
+                              <>
+                                <button
+                                  onClick={() => saveReqEdit(r.id)}
+                                  disabled={editReqSaving}
+                                  className="text-xs disabled:opacity-40"
+                                  style={{ color: '#3B6D11' }}
+                                >
+                                  {editReqSaving ? '…' : 'Save'}
+                                </button>
+                                <button
+                                  onClick={() => setEditingReq(null)}
+                                  className="text-xs text-coffee-400"
+                                >
+                                  Cancel
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => setEditingReq({ id: r.id, quantity_bags: r.quantity_bags })}
+                                  className="text-xs text-coffee-400 hover:text-coffee-700 transition-colors"
+                                  title="Edit bags"
+                                >
+                                  Edit
+                                </button>
+                                {r.status === 'pending' && (
+                                  <button
+                                    onClick={() => updateReqStatus(r.id, 'confirmed')}
+                                    disabled={!!rowActioning[r.id]}
+                                    className="text-xs transition-colors disabled:opacity-40"
+                                    style={{ color: '#3B6D11' }}
+                                  >
+                                    {rowActioning[r.id] ? '…' : 'Confirm'}
+                                  </button>
+                                )}
+                                {r.status === 'confirmed' && (
+                                  <button
+                                    onClick={() => updateReqStatus(r.id, 'fulfilled')}
+                                    disabled={!!rowActioning[r.id]}
+                                    className="text-xs transition-colors disabled:opacity-40"
+                                    style={{ color: '#185FA5' }}
+                                  >
+                                    {rowActioning[r.id] ? '…' : 'Fulfil'}
+                                  </button>
+                                )}
+                              </>
+                            )}
+                          </div>
                         </td>
                       )}
                     </tr>

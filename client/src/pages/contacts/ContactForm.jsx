@@ -4,7 +4,6 @@ import Layout from '../../components/Layout';
 import { api } from '../../lib/api';
 import { Button, FormInput, FormSelect, FormTextarea, PageHeader } from '../../components/ui';
 
-const SEGMENTS = ['Laos', 'Thailand', 'Malaysia', 'Singapore', 'Other'];
 const STATUSES = ['prospect', 'active_buyer', 'private_list', 'trade_account'];
 
 function statusLabel(s) {
@@ -15,7 +14,7 @@ function statusLabel(s) {
 
 const EMPTY = {
   name: '', primary_contact_method: '', location: '',
-  market_segment: 'Laos', preferred_channel: '',
+  preferred_channel: '',
   status: 'prospect', personal_notes: '',
 };
 
@@ -39,7 +38,6 @@ export default function ContactForm() {
           name:                   c.name || '',
           primary_contact_method: c.primary_contact_method || '',
           location:               c.location || '',
-          market_segment:         c.market_segment || 'Laos',
           preferred_channel:      c.preferred_channel || '',
           status:                 c.status || 'prospect',
           personal_notes:         c.personal_notes || '',
@@ -98,15 +96,6 @@ export default function ContactForm() {
             value={form.location}
             onChange={field('location')}
           />
-
-          <FormSelect
-            label="Market Segment"
-            value={form.market_segment}
-            onChange={field('market_segment')}
-            required
-          >
-            {SEGMENTS.map(s => <option key={s} value={s}>{s}</option>)}
-          </FormSelect>
 
           <FormInput
             label="Preferred Channel"

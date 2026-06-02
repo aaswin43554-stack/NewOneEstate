@@ -146,6 +146,84 @@ router.get(
   }
 );
 
+// PUT /api/lots/:id
+router.put(
+  '/:id',
+  requireRole('admin'),
+  [
+    param('id').isUUID(),
+    body('lot_code').optional().trim().notEmpty(),
+    body('estate').optional().trim().notEmpty(),
+    body('process').optional().isIn(['Washed', 'Honey', 'Natural', 'Anaerobic']),
+    body('harvest_year').optional().isInt({ min: 2000, max: 2100 }),
+    body('arrival_date').optional().isISO8601(),
+    body('storage_location').optional().trim().notEmpty(),
+    body('moisture_content').optional({ nullable: true }).isFloat({ min: 0, max: 100 }),
+    body('water_activity').optional({ nullable: true }).isFloat({ min: 0, max: 1 }),
+    body('supplier_notes').optional({ nullable: true }).isString(),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    const fields = ['lot_code','estate','process','harvest_year','arrival_date',
+                    'storage_location','moisture_content','water_activity','supplier_notes'];
+    const updates = [];
+    const params  = [];
+
+    for (const f of fields) {
+      if (req.body[f] !== undefined) {
+        params.push(req.body[f] === '' ? null : req.body[f]);
+        updates.push(`${f} = $${params.length}`);
+      }
+    }
+    if (updates.length === 0) return res.status(400).json({ error: 'No fields to update' });
+
+    params.push(req.user.id);
+    updates.push(`updated_by = $${params.length}`, 'updated_at = NOW()');
+    params.push(req.user.tenant_id, req.params.id);
+
+    try {
+      const { rows: [lot] } = await pool.query(
+        `UPDATE oec_lots SET ${updates.join(', ')}
+         WHERE tenant_id = $${params.length - 1} AND id = $${params.length} AND deleted_at IS NULL
+         RETURNING *`,
+        params
+      );
+      if (!lot) return res.status(404).json({ error: 'Lot not found' });
+      return res.json({ lot: { ...lot, quality_alert: qualityAlert(lot.arrival_date) } });
+    } catch (err) {
+      if (err.code === '23505') return res.status(409).json({ error: 'Lot code already exists' });
+      console.error('Update lot:', err);
+      return res.status(500).json({ error: 'Failed to update lot' });
+    }
+  }
+);
+
+// DELETE /api/lots/:id
+router.delete(
+  '/:id',
+  requireRole('admin'),
+  [param('id').isUUID()],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+    try {
+      const { rows: [lot] } = await pool.query(
+        `UPDATE oec_lots SET deleted_at = NOW(), updated_by = $1
+         WHERE id = $2 AND tenant_id = $3 AND deleted_at IS NULL RETURNING id`,
+        [req.user.id, req.params.id, req.user.tenant_id]
+      );
+      if (!lot) return res.status(404).json({ error: 'Lot not found' });
+      return res.json({ message: 'Lot deleted' });
+    } catch (err) {
+      console.error('Delete lot:', err);
+      return res.status(500).json({ error: 'Failed to delete lot' });
+    }
+  }
+);
+
 // POST /api/lots/:id/movements
 router.post(
   '/:id/movements',

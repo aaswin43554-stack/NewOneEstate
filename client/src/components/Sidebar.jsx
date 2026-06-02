@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { api } from '../lib/api';
 import {
-  LayoutDashboard, Package, Layers, BookOpen, Users, Star,
+  LayoutDashboard, Package, Layers, Users, Star,
   Flame, ScrollText, FlaskConical, Tag, LogOut,
 } from 'lucide-react';
 
@@ -29,12 +29,6 @@ const GROUPS = [
       { to: '/contacts',              label: 'Contacts',     icon: Users },
       { to: '/contacts/private-list', label: 'Private List', icon: Star },
       { to: '/labels',                label: 'Labels',       icon: Tag },
-    ],
-  },
-  {
-    label: 'Records',
-    items: [
-      { to: '/journal', label: 'Journal', icon: BookOpen },
     ],
   },
 ];

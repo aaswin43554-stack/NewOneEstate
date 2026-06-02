@@ -98,6 +98,7 @@ app.get('/api/dashboard-stats', requireAuth, async (req, res) => {
       { rows: [{ requested_bags }] },
       { rows: activeAllocsList },
       { rows: [{ quality_alert_lots }] },
+      { rows: activityRows },
     ] = await Promise.all([
       pool.query("SELECT COALESCE(SUM(current_weight_g), 0)::bigint AS total_stock FROM oec_lots WHERE tenant_id = $1 AND deleted_at IS NULL", [tenant_id]),
       pool.query("SELECT COUNT(*)::int AS active_allocs FROM oec_allocations WHERE tenant_id = $1 AND state != 'archived' AND deleted_at IS NULL", [tenant_id]),
@@ -106,6 +107,56 @@ app.get('/api/dashboard-stats', requireAuth, async (req, res) => {
       pool.query("SELECT COALESCE(SUM(quantity_bags), 0)::int AS requested_bags FROM oec_allocation_requests WHERE tenant_id = $1 AND status != 'fulfilled'", [tenant_id]),
       pool.query("SELECT allocation_code, state, process FROM oec_allocations WHERE tenant_id = $1 AND state = 'open_for_requests' AND deleted_at IS NULL LIMIT 1", [tenant_id]),
       pool.query("SELECT COUNT(*)::int AS quality_alert_lots FROM oec_lots WHERE tenant_id = $1 AND deleted_at IS NULL AND current_weight_g > 0 AND arrival_date < NOW() - INTERVAL '365 days'", [tenant_id]),
+      pool.query(`
+        SELECT * FROM (
+          SELECT 'inventory' AS type,
+                 'Lot ' || lot_code || ' added to inventory (' || process || ')' AS description,
+                 created_at AS ts
+          FROM oec_lots WHERE tenant_id = $1 AND deleted_at IS NULL
+          UNION ALL
+          SELECT 'inventory',
+                 'Lot ' || lot_code || ' details updated',
+                 updated_at
+          FROM oec_lots WHERE tenant_id = $1 AND deleted_at IS NULL
+            AND updated_at > created_at + INTERVAL '2 seconds'
+          UNION ALL
+          SELECT 'inventory',
+                 initcap(replace(lm.movement_type::text, '_', ' ')) || ' recorded on ' || l.lot_code ||
+                   CASE WHEN lm.reason IS NOT NULL AND lm.reason != '' THEN ' — ' || lm.reason ELSE '' END,
+                 lm.created_at
+          FROM oec_lot_movements lm
+          JOIN oec_lots l ON l.id = lm.lot_id
+          WHERE lm.tenant_id = $1
+          UNION ALL
+          SELECT 'roast',
+                 'Roast session ' || batch_code || ' logged',
+                 created_at
+          FROM oec_roast_sessions WHERE tenant_id = $1 AND deleted_at IS NULL
+          UNION ALL
+          SELECT 'allocation',
+                 'Allocation ' || allocation_code || ' created',
+                 created_at
+          FROM oec_allocations WHERE tenant_id = $1 AND deleted_at IS NULL
+          UNION ALL
+          SELECT 'allocation',
+                 'Allocation ' || allocation_code || ' moved to ' || state,
+                 updated_at
+          FROM oec_allocations WHERE tenant_id = $1 AND deleted_at IS NULL
+            AND updated_at > created_at + INTERVAL '2 seconds'
+          UNION ALL
+          SELECT 'contact',
+                 'Contact ' || name || ' added',
+                 created_at
+          FROM oec_contacts WHERE tenant_id = $1 AND deleted_at IS NULL
+          UNION ALL
+          SELECT 'cupping',
+                 'Cupping session logged',
+                 created_at
+          FROM oec_cupping_sessions WHERE tenant_id = $1 AND deleted_at IS NULL
+        ) events
+        ORDER BY ts DESC
+        LIMIT 10
+      `, [tenant_id]),
     ]);
 
     console.log(`[DASHBOARD] OK — tenant ${tenant_id} | stock: ${total_stock}g | allocs: ${active_allocs} | contacts: ${total_contacts} | roasts: ${total_roasts}`);
@@ -117,6 +168,7 @@ app.get('/api/dashboard-stats', requireAuth, async (req, res) => {
       totalBagsRequested: requested_bags,
       activeAllocation: activeAllocsList[0] || null,
       qualityAlertLotsCount: quality_alert_lots,
+      recentActivity: activityRows.map(r => ({ type: r.type, description: r.description, timestamp: r.ts })),
     });
   } catch (err) {
     // DASH_001: DB error fetching one or more dashboard stat queries
