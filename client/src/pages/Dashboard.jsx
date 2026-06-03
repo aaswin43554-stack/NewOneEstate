@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import Layout from '../components/Layout';
 import { api } from '../lib/api';
-import { StatCard, Button, StatusBadge, ProcessBadge } from '../components/ui';
-import { Flame, Layers, FlaskConical, UserPlus, Radio, Wand2, TrendingDown, BarChart2 } from 'lucide-react';
+import { StatCard, Button, StatusBadge } from '../components/ui';
+import { Flame, FlaskConical, UserPlus, Radio, TrendingDown, BarChart2 } from 'lucide-react';
 
 const EVENT_COLORS = {
   inventory:  '#8B6A47',
