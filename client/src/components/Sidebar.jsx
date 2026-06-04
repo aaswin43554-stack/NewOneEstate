@@ -19,8 +19,8 @@ const GROUPS = [
     label: 'Craft',
     items: [
       { to: '/roast',    label: 'Roast Sessions', icon: Flame },
-      { to: '/profiles', label: 'Profiles',       icon: ScrollText },
       { to: '/cupping',  label: 'Cupping',        icon: FlaskConical },
+      { to: '/profiles', label: 'Profiles',       icon: ScrollText },
     ],
   },
   {

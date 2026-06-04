@@ -33,7 +33,7 @@ const MODE_OPTIONS = [
   { value: 'development', label: 'Development' },
 ];
 
-const COLUMNS = [
+const PROD_COLUMNS = [
   {
     key: 'batch_code',
     label: 'Batch Code',
@@ -101,6 +101,82 @@ const COLUMNS = [
   },
 ];
 
+const DECISION_STYLE = {
+  ADJUST: { bg: '#E6F1FB', color: '#185FA5' },
+  REJECT: { bg: '#FCEBEB', color: '#A32D2D' },
+};
+
+function DecisionBadge({ notes }) {
+  if (!notes) return <span className="text-coffee-300">—</span>;
+  const word = notes.split(/[\s—]/)[0].toUpperCase();
+  const style = DECISION_STYLE[word] || { bg: '#F2EAE0', color: '#8B6A47' };
+  return (
+    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+      style={{ background: style.bg, color: style.color }}>
+      {word}
+    </span>
+  );
+}
+
+const DEV_COLUMNS = [
+  {
+    key: 'batch_code',
+    label: 'Batch Code',
+    sortable: true,
+    render: v => (
+      <span className="font-mono text-coffee-800" style={{ fontWeight: 500, fontSize: 13 }}>
+        {v}
+      </span>
+    ),
+  },
+  {
+    key: 'started_at',
+    label: 'Date',
+    sortable: true,
+    render: v => <span className="text-coffee-400">{fmtDate(v)}</span>,
+  },
+  {
+    key: 'estate',
+    label: 'Estate',
+    render: v => <span className="text-coffee-700">{v || '—'}</span>,
+  },
+  {
+    key: 'process_description',
+    label: 'Process',
+    render: v => <span className="text-coffee-600 text-xs">{v || '—'}</span>,
+  },
+  {
+    key: 'charge_temp_c',
+    label: 'Charge °C',
+    render: v => v != null ? <span className="font-mono text-xs">{parseFloat(v).toFixed(1)}</span> : '—',
+  },
+  {
+    key: 'first_crack_temp_c',
+    label: '1C °C',
+    render: v => v != null ? <span className="font-mono text-xs">{parseFloat(v).toFixed(1)}</span> : '—',
+  },
+  {
+    key: 'eject_temp_c',
+    label: 'Eject °C',
+    render: v => v != null ? <span className="font-mono text-xs">{parseFloat(v).toFixed(1)}</span> : '—',
+  },
+  {
+    key: 'dtr',
+    label: 'DTR %',
+    render: v => v ? <span className="text-coffee-500">{v}%</span> : '—',
+  },
+  {
+    key: 'total_time_seconds',
+    label: 'Duration',
+    render: v => <span className="font-mono text-xs">{fmtMSS(v)}</span>,
+  },
+  {
+    key: 'decision_notes',
+    label: 'Decision',
+    render: v => <DecisionBadge notes={v} />,
+  },
+];
+
 export default function RoastList() {
   const [mode,     setMode]     = useState('production');
   const [sessions, setSessions] = useState([]);
@@ -137,7 +213,7 @@ export default function RoastList() {
         </div>
 
         <DataTable
-          columns={COLUMNS}
+          columns={mode === 'development' ? DEV_COLUMNS : PROD_COLUMNS}
           rows={sessions}
           loading={loading}
           onRowClick={s => navigate(`/roast/${s.id}`)}

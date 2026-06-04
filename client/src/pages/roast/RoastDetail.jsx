@@ -108,10 +108,59 @@ export default function RoastDetail() {
     ['Green In',    kgLabel(session.green_weight_in_g)],
     ['Roasted Out', kgLabel(session.roasted_weight_out_g)],
     ['Roast Loss',  roastLossPct ? `${roastLossPct}%` : '—'],
-    ['Charge Temp', session.charge_temp_c ? `${session.charge_temp_c}°C` : '—'],
-    ['Eject Temp',  session.eject_temp_c  ? `${session.eject_temp_c}°C`  : '—'],
+    ['Charge Temp', session.charge_temp_c != null ? `${parseFloat(session.charge_temp_c).toFixed(1)}°C` : '—'],
+    ['Eject Temp',  session.eject_temp_c  != null ? `${parseFloat(session.eject_temp_c).toFixed(1)}°C`  : '—'],
     ['DTR',         session.dtr ? `${session.dtr}%` : '—'],
   ];
+
+  const devPhases = session.is_development ? [
+    {
+      label: 'Identity',
+      rows: [
+        ['Estate',   session.estate || '—'],
+        ['Process',  session.process_description || '—'],
+        ['Moisture', session.moisture_pct != null ? `${session.moisture_pct}%` : '—'],
+      ],
+    },
+    {
+      label: 'Charge & Turning Point',
+      rows: [
+        ['Charge',   session.charge_temp_c != null ? `${parseFloat(session.charge_temp_c).toFixed(1)}°C` : '—'],
+        ['TP Temp',  session.tp_temp_c     != null ? `${parseFloat(session.tp_temp_c).toFixed(1)}°C`     : '—'],
+        ['TP Time',  session.tp_time_seconds  ? fmtMSS(session.tp_time_seconds)  : '—'],
+      ],
+    },
+    {
+      label: 'Yellowing',
+      rows: [
+        ['Yellow Temp', session.yellow_temp_c       != null ? `${parseFloat(session.yellow_temp_c).toFixed(1)}°C` : '—'],
+        ['Yellow Time', session.yellow_time_seconds ? fmtMSS(session.yellow_time_seconds) : '—'],
+      ],
+    },
+    {
+      label: '1st Crack',
+      rows: [
+        ['1C Temp',    session.first_crack_temp_c       != null ? `${parseFloat(session.first_crack_temp_c).toFixed(1)}°C` : '—'],
+        ['1C Time',    session.first_crack_time_seconds ? fmtMSS(session.first_crack_time_seconds) : '—'],
+        ['ROR at 1C',  session.ror_first_crack != null  ? `${session.ror_first_crack}°C/min` : '—'],
+      ],
+    },
+    {
+      label: 'Eject',
+      rows: [
+        ['Eject Temp', session.eject_temp_c  != null ? `${parseFloat(session.eject_temp_c).toFixed(1)}°C` : '—'],
+        ['Eject Time', session.total_time_seconds ? fmtMSS(session.total_time_seconds) : '—'],
+        ['ROR Eject',  session.ror_eject || '—'],
+      ],
+    },
+    {
+      label: 'Development',
+      rows: [
+        ['Dev Time', session.development_time_seconds ? fmtMSS(session.development_time_seconds) : '—'],
+        ['DTR',      session.dtr ? `${session.dtr}%` : '—'],
+      ],
+    },
+  ] : null;
 
   return (
     <Layout>
@@ -149,6 +198,38 @@ export default function RoastDetail() {
             </div>
           ))}
         </div>
+
+        {/* Dev roast curve data */}
+        {devPhases && (
+          <div className="bg-white border border-coffee-200 rounded-xl p-5 space-y-5">
+            <p className="text-xs text-coffee-400 uppercase tracking-wide">Roast Curve Data</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {devPhases.map(phase => (
+                <div key={phase.label}>
+                  <p className="text-xs font-medium text-coffee-500 uppercase tracking-wide mb-2">
+                    {phase.label}
+                  </p>
+                  <div className="space-y-1">
+                    {phase.rows.map(([label, value]) => (
+                      <div key={label} className="flex justify-between text-sm">
+                        <span className="text-coffee-400">{label}</span>
+                        <span className="font-mono text-coffee-800">{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {session.decision_notes && (
+              <div className="pt-3 border-t border-coffee-100">
+                <p className="text-xs font-medium text-coffee-500 uppercase tracking-wide mb-2">
+                  Decision & Notes
+                </p>
+                <p className="text-sm text-coffee-700 leading-relaxed">{session.decision_notes}</p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Curve chart */}
         {curve.length > 0 && (

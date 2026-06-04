@@ -1,265 +1,280 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Layout from '../../components/Layout';
 import { api } from '../../lib/api';
-import { Button, ProcessBadge, StatCard } from '../../components/ui';
-import { Printer, RefreshCw } from 'lucide-react';
+import { Button, FormInput } from '../../components/ui';
+import { Printer, Save, Upload, ArrowLeft } from 'lucide-react';
 
-const TZ = 'Asia/Vientiane';
+const PROCESS_LABEL = {
+  Washed:    'Washed Process',
+  Honey:     'Honey Process',
+  Natural:   'Natural Process',
+  Anaerobic: 'Anaerobic Process',
+};
 
-function fmtDate(iso) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('en-GB', { timeZone: TZ, day: '2-digit', month: 'short', year: 'numeric' });
-}
-function fmtDateTime(iso) {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleString('en-GB', { timeZone: TZ, dateStyle: 'medium', timeStyle: 'short' });
-}
-
-function LabelCard({ label }) {
+function LabelCard({ label, form }) {
+  const d = { ...label, ...form };
   return (
     <div
-      className="label-card bg-white border border-coffee-200 rounded-xl overflow-hidden"
-      style={{ maxWidth: 480, margin: '0 auto' }}
+      className="label-card rounded-2xl overflow-hidden shadow-sm"
+      style={{ border: '1px solid #C8A87A', background: '#FDFAF6', maxWidth: 380, width: '100%' }}
     >
-      {/* Top bar */}
+      {/* Header */}
       <div
-        className="text-center py-2 text-xs uppercase tracking-[0.2em]"
-        style={{ background: '#533A24', color: '#FAF6F0', fontWeight: 500 }}
+        className="text-center py-3"
+        style={{ background: '#2A1A0C' }}
       >
-        One Estate Coffee
+        <p style={{ fontSize: 16, letterSpacing: '0.2em', fontWeight: 700, color: '#FAF6F0', fontFamily: 'Georgia, serif' }}>
+          ONE ESTATE
+        </p>
+        <p style={{ fontSize: 8, letterSpacing: '0.18em', color: '#C8A87A', marginTop: 2 }}>
+          SINGLE-ESTATE SPECIALTY COFFEE
+        </p>
       </div>
 
-      <div className="p-6">
+      {/* Body */}
+      <div className="px-5 py-4">
         {/* Allocation + QR row */}
-        <div className="flex items-start justify-between mb-5">
+        <div className="flex items-start justify-between mb-3">
           <div>
-            <p
-              className="font-mono text-coffee-900 mb-1"
-              style={{ fontSize: 32, fontWeight: 500, lineHeight: 1 }}
-            >
-              {label.allocation_code}
+            <p style={{ fontSize: 20, fontWeight: 700, color: '#1A0E06', letterSpacing: '0.02em', lineHeight: 1.1 }}>
+              {d.allocation_code || '—'}
             </p>
-            <div className="flex items-center gap-2 mt-2">
-              <ProcessBadge process={label.process} />
-              {label.harvest_year && (
-                <span className="text-xs text-coffee-400">{label.harvest_year} Harvest</span>
-              )}
-            </div>
+            {d.estate_location && (
+              <p style={{ fontSize: 10, color: '#8B6A47', marginTop: 3 }}>{d.estate_location}</p>
+            )}
           </div>
-          {label.qr_code_base64 && (
-            <div className="flex-shrink-0 p-2 border border-coffee-100 rounded-lg">
+          {d.qr_code_base64 && (
+            <div style={{ padding: 4, border: '1px solid #E0D0BC', borderRadius: 6, background: '#fff', flexShrink: 0 }}>
               <img
-                src={`data:image/png;base64,${label.qr_code_base64}`}
-                alt="QR code"
-                style={{ width: 80, height: 80 }}
+                src={`data:image/png;base64,${d.qr_code_base64}`}
+                alt="QR"
+                style={{ width: 60, height: 60, display: 'block' }}
               />
             </div>
           )}
         </div>
 
-        {/* Estate */}
-        <p className="text-xs text-coffee-400 mb-4">
-          Suan Saket Estate · Doi Saket, Chiang Mai, Thailand
-        </p>
+        {/* Uploaded image */}
+        {d.label_image && (
+          <div className="mb-3 rounded-lg overflow-hidden" style={{ border: '1px solid #E0D0BC' }}>
+            <img
+              src={d.label_image}
+              alt="Label"
+              style={{ width: '100%', maxHeight: 120, objectFit: 'cover', display: 'block' }}
+            />
+          </div>
+        )}
 
-        {/* Dates grid */}
+        {/* Detail rows */}
         <div
-          className="grid grid-cols-3 gap-4 pt-4"
-          style={{ borderTop: '1px solid #F2EAE0' }}
+          className="space-y-1.5 pt-3"
+          style={{ borderTop: '1px solid #E8DAC8', fontSize: 11 }}
         >
-          <div>
-            <p className="text-xs text-coffee-300 uppercase tracking-wide mb-0.5">Roasted</p>
-            <p className="text-xs text-coffee-700">
-              {fmtDate(label.roast_date_start)}
-              {label.roast_date_end !== label.roast_date_start && (
-                <> – {fmtDate(label.roast_date_end)}</>
-              )}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-coffee-300 uppercase tracking-wide mb-0.5">Ready</p>
-            <p className="text-xs text-coffee-700">{fmtDate(label.ready_to_brew_date)}</p>
-          </div>
-          <div>
-            <p className="text-xs text-coffee-300 uppercase tracking-wide mb-0.5">Best Before</p>
-            <p className="text-xs text-coffee-700">{fmtDate(label.best_consumed_by_date)}</p>
-          </div>
+          <LabelRow label="Process" value={PROCESS_LABEL[d.process] || d.process} />
+          {d.harvest_year && <LabelRow label="Harvest" value={d.harvest_year} />}
+          {d.variety      && <LabelRow label="Variety" value={d.variety} />}
+          {d.roast_level  && <LabelRow label="Roast"   value={d.roast_level} />}
+          {d.flavour_notes && (
+            <LabelRow label="Profile" value={d.flavour_notes} />
+          )}
         </div>
       </div>
 
-      {/* Bottom bar */}
+      {/* Footer */}
       <div
-        className="text-center py-1.5 text-xs text-coffee-300"
-        style={{ background: '#FAF6F0', borderTop: '1px solid #F2EAE0' }}
+        className="text-center py-2"
+        style={{ background: '#F0E6D6', borderTop: '1px solid #D4C4AC' }}
       >
-        Template {label.template_version}
+        <p style={{ fontSize: 9, color: '#6F5035', letterSpacing: '0.05em' }}>
+          Net Wt. {d.net_weight_g || '—'}g · Roasted
+        </p>
       </div>
     </div>
   );
 }
 
+function LabelRow({ label, value }) {
+  return (
+    <div className="flex gap-2">
+      <span style={{ color: '#A8896A', minWidth: 52 }}>{label}</span>
+      <span style={{ color: '#2A1A0C', fontWeight: 500 }}>{value}</span>
+    </div>
+  );
+}
+
+const INIT_FORM = {
+  estate_location: '',
+  variety:         '',
+  roast_level:     '',
+  flavour_notes:   '',
+  net_weight_g:    200,
+  label_image:     '',
+};
+
 export default function LabelPreview() {
   const { allocation_id } = useParams();
-  const navigate = useNavigate();
-  const [label,        setLabel]        = useState(null);
-  const [loading,      setLoading]      = useState(true);
-  const [notFound,     setNotFound]     = useState(false);
-  const [generating,   setGenerating]   = useState(false);
-  const [confirmRegen, setConfirmRegen] = useState(false);
-  const [error,        setError]        = useState('');
+  const navigate          = useNavigate();
+  const fileRef           = useRef(null);
+
+  const [label,      setLabel]      = useState(null);
+  const [alloc,      setAlloc]      = useState(null);
+  const [loading,    setLoading]    = useState(true);
+  const [notFound,   setNotFound]   = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [saving,     setSaving]     = useState(false);
+  const [saved,      setSaved]      = useState(false);
+  const [error,      setError]      = useState('');
+  const [form,       setForm]       = useState(INIT_FORM);
+
+  function syncForm(lbl) {
+    setForm({
+      estate_location: lbl.estate_location || '',
+      variety:         lbl.variety         || '',
+      roast_level:     lbl.roast_level     || '',
+      flavour_notes:   lbl.flavour_notes   || '',
+      net_weight_g:    lbl.net_weight_g    ?? 200,
+      label_image:     lbl.label_image     || '',
+    });
+  }
 
   function load() {
-    setLoading(true);
-    setNotFound(false);
+    setLoading(true); setNotFound(false);
     api.get(`/labels/${allocation_id}`)
       .then(r => {
-        if (r.status === 404) { setNotFound(true); return null; }
-        return r.json();
+        if (r.status === 404) {
+          setNotFound(true);
+          return api.get(`/allocations/${allocation_id}`).then(r2 => r2.json()).then(d2 => {
+            if (d2?.allocation) setAlloc(d2.allocation);
+          });
+        }
+        return r.json().then(d => {
+          if (d?.label) { setLabel(d.label); syncForm(d.label); }
+        });
       })
-      .then(d => { if (d?.label) setLabel(d.label); })
       .finally(() => setLoading(false));
   }
   useEffect(load, [allocation_id]);
 
   async function generate() {
     setGenerating(true); setError('');
-    const res = await api.post('/labels/generate', { allocation_id });
+    const res = await api.post('/labels/generate', { allocation_id, ...formPayload() });
     const d   = await res.json();
-    if (res.ok) { setLabel(d.label); setNotFound(false); }
-    else { setError(d.error || 'Failed to generate label.'); }
+    if (res.ok) { setLabel(d.label); syncForm(d.label); setNotFound(false); }
+    else        { setError(d.error || 'Failed to generate label.'); }
     setGenerating(false);
-    setConfirmRegen(false);
   }
+
+  function formPayload() {
+    return {
+      estate_location: form.estate_location || null,
+      variety:         form.variety         || null,
+      roast_level:     form.roast_level     || null,
+      flavour_notes:   form.flavour_notes   || null,
+      net_weight_g:    form.net_weight_g    || null,
+      label_image:     form.label_image     || null,
+    };
+  }
+
+  async function save() {
+    if (!label) return;
+    setSaving(true); setError(''); setSaved(false);
+    const res = await api.put(`/labels/${label.id}`, formPayload());
+    const d   = await res.json();
+    if (res.ok) { setLabel(d.label); setSaved(true); setTimeout(() => setSaved(false), 2500); }
+    else        { setError(d.error || 'Failed to save.'); }
+    setSaving(false);
+  }
+
+  function handleImageUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => setForm(f => ({ ...f, label_image: ev.target.result }));
+    reader.readAsDataURL(file);
+  }
+
+  const set = k => v => setForm(f => ({ ...f, [k]: v }));
 
   if (loading) return <Layout><div className="px-6 py-6 text-sm text-coffee-400">Loading…</div></Layout>;
 
   return (
     <Layout>
-      <div className="max-w-4xl mx-auto px-6 py-6">
+      <div className="max-w-5xl mx-auto px-6 py-6">
+        {/* Top bar */}
         <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-xl text-coffee-900" style={{ fontWeight: 500 }}>
-              Bag Label
-            </h1>
-            {label && (
-              <p className="text-xs text-coffee-400 mt-0.5">
-                Generated {fmtDateTime(label.generated_at)}
-              </p>
-            )}
-          </div>
+          <button
+            onClick={() => navigate('/labels')}
+            className="flex items-center gap-1.5 text-coffee-400 hover:text-coffee-700 transition-colors text-sm"
+          >
+            <ArrowLeft size={14} /> Labels
+          </button>
           {label && (
             <div className="flex gap-2">
-              <Button
-                variant="secondary"
-                onClick={() => setConfirmRegen(true)}
-              >
-                <RefreshCw size={13} /> Regenerate
+              <Button variant="secondary" onClick={() => window.print()}>
+                <Printer size={13} /> Print
               </Button>
-              <Button
-                variant="primary"
-                onClick={() => window.print()}
-              >
-                <Printer size={13} /> Print Label
+              <Button variant="primary" onClick={save} disabled={saving}>
+                <Save size={13} /> {saving ? 'Saving…' : saved ? 'Saved' : 'Save'}
               </Button>
             </div>
           )}
         </div>
 
         {notFound && !label ? (
-          <div
-            className="flex flex-col items-center justify-center py-20 bg-white border border-coffee-200 rounded-xl"
-          >
-            <p className="text-sm text-coffee-400 mb-4">
-              No label generated for this allocation yet.
-            </p>
-            <Button variant="primary" onClick={generate} disabled={generating}>
-              {generating ? 'Generating…' : 'Generate Label'}
-            </Button>
-            {error && (
-              <p className="text-xs mt-3" style={{ color: '#A32D2D' }}>{error}</p>
-            )}
+          /* ── No label yet ── */
+          <div className="grid md:grid-cols-[1fr_360px] gap-8 items-start">
+            <div className="flex flex-col items-center gap-5">
+              {/* Preview with form data */}
+              <p className="text-xs text-coffee-400 uppercase tracking-wide self-start">Preview</p>
+              <LabelCard
+                label={alloc || { allocation_code: '', process: '' }}
+                form={form}
+              />
+            </div>
+            <FieldsForm
+              form={form} set={set} fileRef={fileRef}
+              onImageUpload={handleImageUpload}
+              footer={
+                <Button
+                  variant="primary"
+                  onClick={generate}
+                  disabled={generating}
+                  className="w-full justify-center"
+                >
+                  {generating ? 'Creating…' : 'Create Label'}
+                </Button>
+              }
+            />
           </div>
         ) : label ? (
-          <div className="grid md:grid-cols-[1fr_320px] gap-6">
-            {/* Label preview */}
-            <LabelCard label={label} />
-
-            {/* Metadata panel */}
-            <div className="space-y-4">
-              <div className="bg-white border border-coffee-200 rounded-xl p-5">
-                <p className="text-xs text-coffee-400 uppercase tracking-wide mb-4">Label Details</p>
-                <div className="space-y-3">
-                  {[
-                    { label: 'Allocation',   value: label.allocation_code },
-                    { label: 'Process',      value: <ProcessBadge process={label.process} /> },
-                    { label: 'Harvest Year', value: label.harvest_year },
-                    { label: 'Template',     value: label.template_version },
-                    { label: 'Generated',    value: fmtDateTime(label.generated_at) },
-                  ].map(({ label: l, value }) => (
-                    <div key={l}>
-                      <p className="text-xs text-coffee-300 uppercase tracking-wide mb-0.5">{l}</p>
-                      <p className="text-sm text-coffee-700">{value}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="bg-white border border-coffee-200 rounded-xl p-5">
-                <p className="text-xs text-coffee-400 uppercase tracking-wide mb-3">Dates</p>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-coffee-400">Roasted</span>
-                    <span className="text-coffee-700">{fmtDate(label.roast_date_start)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-coffee-400">Ready to Brew</span>
-                    <span className="text-coffee-700">{fmtDate(label.ready_to_brew_date)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-coffee-400">Best Before</span>
-                    <span className="text-coffee-700">{fmtDate(label.best_consumed_by_date)}</span>
-                  </div>
-                </div>
-              </div>
+          /* ── Label exists ── */
+          <div className="grid md:grid-cols-[1fr_360px] gap-8 items-start">
+            <div className="flex flex-col items-center gap-3">
+              <p className="text-xs text-coffee-400 uppercase tracking-wide self-start">Label Preview</p>
+              <LabelCard label={label} form={form} />
             </div>
+            <FieldsForm
+              form={form} set={set} fileRef={fileRef}
+              onImageUpload={handleImageUpload}
+              footer={
+                <Button
+                  variant="primary"
+                  onClick={save}
+                  disabled={saving}
+                  className="w-full justify-center"
+                >
+                  <Save size={13} /> {saving ? 'Saving…' : saved ? 'Saved ✓' : 'Save Changes'}
+                </Button>
+              }
+            />
           </div>
         ) : null}
 
-        {error && label && (
-          <p className="text-xs mt-3 text-center" style={{ color: '#A32D2D' }}>{error}</p>
+        {error && (
+          <p className="text-xs mt-4 text-center" style={{ color: '#A32D2D' }}>{error}</p>
         )}
       </div>
-
-      {/* Regenerate confirm */}
-      {confirmRegen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: 'rgba(34,21,8,0.2)' }}
-        >
-          <div className="bg-white rounded-2xl w-full max-w-sm p-6 border border-coffee-200">
-            <h2 className="text-base text-coffee-900 mb-2" style={{ fontWeight: 500 }}>
-              Regenerate Label?
-            </h2>
-            <p className="text-sm text-coffee-500 mb-5">
-              Regenerate with current session data?
-            </p>
-            <div className="flex gap-3">
-              <Button
-                variant="primary"
-                onClick={generate}
-                disabled={generating}
-                className="flex-1 justify-center"
-              >
-                {generating ? 'Generating…' : 'Regenerate'}
-              </Button>
-              <Button variant="secondary" onClick={() => setConfirmRegen(false)}>
-                Cancel
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Print CSS */}
       <style>{`
@@ -273,9 +288,113 @@ export default function LabelPreview() {
             margin: 0 !important;
             border: none !important;
             border-radius: 0 !important;
+            box-shadow: none !important;
           }
         }
       `}</style>
     </Layout>
+  );
+}
+
+function FieldsForm({ form, set, fileRef, onImageUpload, footer }) {
+  return (
+    <div className="bg-white border border-coffee-200 rounded-xl p-5 space-y-4">
+      <p className="text-xs text-coffee-400 uppercase tracking-wide">Label Fields</p>
+
+      <div>
+        <label className="text-xs text-coffee-500 block mb-1">Estate / Location</label>
+        <FormInput
+          value={form.estate_location}
+          onChange={e => set('estate_location')(e.target.value)}
+          placeholder="e.g. Suan Saket, Doi Saket"
+        />
+      </div>
+
+      <div>
+        <label className="text-xs text-coffee-500 block mb-1">Variety</label>
+        <FormInput
+          value={form.variety}
+          onChange={e => set('variety')(e.target.value)}
+          placeholder="e.g. Field Blend"
+        />
+      </div>
+
+      <div>
+        <label className="text-xs text-coffee-500 block mb-1">Roast</label>
+        <FormInput
+          value={form.roast_level}
+          onChange={e => set('roast_level')(e.target.value)}
+          placeholder="e.g. Omni"
+        />
+      </div>
+
+      <div>
+        <label className="text-xs text-coffee-500 block mb-1">Flavour / Profile</label>
+        <FormInput
+          value={form.flavour_notes}
+          onChange={e => set('flavour_notes')(e.target.value)}
+          placeholder="e.g. Floral / Apricot / Clean"
+        />
+      </div>
+
+      <div>
+        <label className="text-xs text-coffee-500 block mb-1">Net Weight (g)</label>
+        <FormInput
+          type="number"
+          value={form.net_weight_g}
+          onChange={e => set('net_weight_g')(parseInt(e.target.value) || '')}
+          placeholder="200"
+        />
+      </div>
+
+      {/* Image upload */}
+      <div>
+        <label className="text-xs text-coffee-500 block mb-2">Label Image (optional)</label>
+        <input
+          type="file"
+          accept="image/*"
+          ref={fileRef}
+          onChange={onImageUpload}
+          style={{ display: 'none' }}
+        />
+        {form.label_image ? (
+          <div className="space-y-2">
+            <img
+              src={form.label_image}
+              alt="Preview"
+              className="w-full rounded-lg object-cover"
+              style={{ maxHeight: 100, border: '1px solid #E0D0BC' }}
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={() => fileRef.current?.click()}
+                className="text-xs text-coffee-500 hover:text-coffee-700"
+              >
+                Replace image
+              </button>
+              <span className="text-coffee-300">·</span>
+              <button
+                onClick={() => set('label_image')('')}
+                className="text-xs hover:text-coffee-700"
+                style={{ color: '#A32D2D' }}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => fileRef.current?.click()}
+            className="flex items-center gap-2 px-4 py-3 w-full rounded-xl text-sm text-coffee-400 hover:text-coffee-700 hover:bg-coffee-50 transition-colors"
+            style={{ border: '1px dashed #D4C4AC' }}
+          >
+            <Upload size={14} />
+            Upload image
+          </button>
+        )}
+      </div>
+
+      <div className="pt-1">{footer}</div>
+    </div>
   );
 }

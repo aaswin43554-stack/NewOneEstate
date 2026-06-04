@@ -22,12 +22,13 @@ function fmtDateTime(d) {
 }
 
 const MOVEMENT_META = {
-  reservation:       { label: 'Reservation',      bg: '#F1EFE8', color: '#888780' },
-  roast_consumption: { label: 'Roast Consumption', bg: '#E6F1FB', color: '#185FA5' },
-  write_off:         { label: 'Write-off',         bg: '#FCEBEB', color: '#A32D2D' },
+  sales:               { label: 'Sales',              bg: '#E6F6EE', color: '#1A7A45' },
+  profile_development: { label: 'Profile Development', bg: '#E6F1FB', color: '#185FA5' },
+  personal_use:        { label: 'Personal Use',        bg: '#F3EDF8', color: '#7B3FA6' },
+  write_off:           { label: 'Write-off',           bg: '#FCEBEB', color: '#A32D2D' },
 };
 
-const INIT_MOVE = { movement_type: 'reservation', weight_kg: '', reason: '' };
+const INIT_MOVE = { movement_type: 'sales', weight_kg: '', reason: '' };
 const PROCESSES = ['Washed', 'Honey', 'Natural', 'Anaerobic'];
 
 export default function LotDetail() {
@@ -275,8 +276,9 @@ export default function LotDetail() {
                 value={moveForm.movement_type}
                 onChange={e => setMoveForm(f => ({ ...f, movement_type: e.target.value }))}
               >
-                <option value="reservation">Reservation</option>
-                <option value="roast_consumption">Roast Consumption</option>
+                <option value="sales">Sales</option>
+                <option value="profile_development">Profile Development</option>
+                <option value="personal_use">Personal Use</option>
                 <option value="write_off">Write-off</option>
               </FormSelect>
 

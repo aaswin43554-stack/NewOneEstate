@@ -18,7 +18,10 @@ function getProcessFromBatchCode(batch_code) {
 
 // POST /api/roast-sessions
 router.post('/', requireRole('admin', 'roaster'), async (req, res) => {
-  const { is_development, allocation_id, process, charge_temp_c, green_weight_in_g, started_at } = req.body;
+  const {
+    is_development, allocation_id, process, charge_temp_c, green_weight_in_g, started_at,
+    estate, process_description, moisture_pct,
+  } = req.body;
   const tenant_id = req.user.tenant_id;
 
   if (is_development && allocation_id) {
@@ -27,8 +30,8 @@ router.post('/', requireRole('admin', 'roaster'), async (req, res) => {
   if (!is_development && !allocation_id) {
     return res.status(400).json({ error: 'Production sessions require an allocation_id.' });
   }
-  if (!charge_temp_c || !Number.isInteger(Number(charge_temp_c))) {
-    return res.status(400).json({ error: 'charge_temp_c is required and must be an integer.' });
+  if (!charge_temp_c || isNaN(parseFloat(charge_temp_c))) {
+    return res.status(400).json({ error: 'charge_temp_c is required and must be a number.' });
   }
   if (!green_weight_in_g || green_weight_in_g <= 0) {
     return res.status(400).json({ error: 'green_weight_in_g must be a positive integer.' });
@@ -74,8 +77,9 @@ router.post('/', requireRole('admin', 'roaster'), async (req, res) => {
     const { rows: [session] } = await pool.query(
       `INSERT INTO oec_roast_sessions
          (tenant_id, allocation_id, is_development, batch_code, green_weight_in_g,
-          charge_temp_c, status, started_at, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,$5,$6,'in_progress', $7, $8, $8)
+          charge_temp_c, estate, process_description, moisture_pct,
+          status, started_at, created_by, updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'in_progress',$10,$11,$11)
        RETURNING *`,
       [
         tenant_id,
@@ -83,7 +87,10 @@ router.post('/', requireRole('admin', 'roaster'), async (req, res) => {
         !!is_development,
         batch_code,
         parseInt(green_weight_in_g),
-        parseInt(charge_temp_c),
+        parseFloat(charge_temp_c),
+        is_development ? (estate || null) : null,
+        is_development ? (process_description || null) : null,
+        is_development ? (moisture_pct != null ? parseFloat(moisture_pct) : null) : null,
         started_at ? new Date(started_at) : new Date(),
         req.user.id,
       ]
@@ -100,7 +107,11 @@ router.post('/', requireRole('admin', 'roaster'), async (req, res) => {
 router.put('/:id/complete', requireRole('admin', 'roaster'), async (req, res) => {
   const { id } = req.params;
   const tenant_id = req.user.tenant_id;
-  const { roasted_weight_out_g, eject_temp_c, total_time_seconds, development_time_seconds, temperature_curve } = req.body;
+  const {
+    roasted_weight_out_g, eject_temp_c, total_time_seconds, development_time_seconds, temperature_curve,
+    tp_temp_c, tp_time_seconds, yellow_temp_c, yellow_time_seconds,
+    first_crack_temp_c, first_crack_time_seconds, ror_first_crack, ror_eject, decision_notes,
+  } = req.body;
 
   const { rows: [session] } = await pool.query(
     'SELECT * FROM oec_roast_sessions WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
@@ -162,13 +173,27 @@ router.put('/:id/complete', requireRole('admin', 'roaster'), async (req, res) =>
          roasted_weight_out_g = $1, eject_temp_c = $2, total_time_seconds = $3,
          development_time_seconds = $4, dtr = $5, temperature_curve = $6,
          variance_flagged = $7, status = 'completed', ended_at = NOW(),
+         tp_temp_c = $9, tp_time_seconds = $10,
+         yellow_temp_c = $11, yellow_time_seconds = $12,
+         first_crack_temp_c = $13, first_crack_time_seconds = $14, ror_first_crack = $15,
+         ror_eject = $16, decision_notes = $17,
          updated_at = NOW(), updated_by = $8
-       WHERE id = $9 RETURNING *`,
+       WHERE id = $18 RETURNING *`,
       [
-        parseInt(roasted_weight_out_g), parseInt(eject_temp_c), parseInt(total_time_seconds),
+        parseInt(roasted_weight_out_g), parseFloat(eject_temp_c), parseInt(total_time_seconds),
         parseInt(development_time_seconds), dtr,
         temperature_curve ? JSON.stringify(temperature_curve) : null,
-        variance_flagged, req.user.id, id,
+        variance_flagged, req.user.id,
+        tp_temp_c        != null ? parseFloat(tp_temp_c)        : null,
+        tp_time_seconds  != null ? parseInt(tp_time_seconds)    : null,
+        yellow_temp_c    != null ? parseFloat(yellow_temp_c)    : null,
+        yellow_time_seconds != null ? parseInt(yellow_time_seconds) : null,
+        first_crack_temp_c  != null ? parseFloat(first_crack_temp_c) : null,
+        first_crack_time_seconds != null ? parseInt(first_crack_time_seconds) : null,
+        ror_first_crack  != null ? parseInt(ror_first_crack)    : null,
+        ror_eject        || null,
+        decision_notes   || null,
+        id,
       ]
     );
     return res.json({

@@ -88,13 +88,62 @@ router.get('/:id', async (req, res) => {
 // POST /api/profiles
 router.post('/', requireRole('admin', 'roaster'), async (req, res) => {
   const tenant_id = req.user.tenant_id;
-  const { estate, process, harvest_year, charge_temp_c, target_dtr, eject_temp_c, total_time_target_s, flavour_target } = req.body;
+  const {
+    source_session_id,
+    estate, process, harvest_year, charge_temp_c, target_dtr, eject_temp_c,
+    total_time_target_s, flavour_target,
+  } = req.body;
 
-  if (!estate || !process || !harvest_year || !charge_temp_c || !target_dtr || !eject_temp_c || !total_time_target_s || !flavour_target) {
-    return res.status(400).json({ error: 'All fields are required.' });
+  if (!process || !VALID_PROCESSES.includes(process)) {
+    return res.status(400).json({ error: 'A valid process is required.' });
   }
-  if (!VALID_PROCESSES.includes(process)) {
-    return res.status(400).json({ error: 'Invalid process.' });
+  if (!harvest_year) {
+    return res.status(400).json({ error: 'harvest_year is required.' });
+  }
+
+  // ── From-session path ────────────────────────────────────────────────────
+  if (source_session_id) {
+    const { rows: [session] } = await pool.query(
+      `SELECT * FROM oec_roast_sessions
+       WHERE id = $1 AND tenant_id = $2 AND is_development = true
+         AND status NOT IN ('in_progress') AND deleted_at IS NULL`,
+      [source_session_id, tenant_id]
+    );
+    if (!session) {
+      return res.status(400).json({ error: 'Session not found or not eligible for profile activation.' });
+    }
+
+    const chargeC = Math.round(parseFloat(session.charge_temp_c));
+    const ejectC  = Math.round(parseFloat(session.eject_temp_c));
+    const dtr     = parseFloat(session.dtr);
+    const totalS  = parseInt(session.total_time_seconds);
+    const estateV = session.estate || estate || '';
+
+    if (!estateV) return res.status(400).json({ error: 'estate is required.' });
+
+    try {
+      const { rows: [profile] } = await pool.query(
+        `INSERT INTO oec_roast_profiles
+           (tenant_id, source_session_id, estate, process, harvest_year,
+            charge_temp_c, target_dtr, eject_temp_c, total_time_target_s, flavour_target,
+            status, approved_at, approved_by, created_by, updated_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'approved',NOW(),$11,$11,$11) RETURNING *`,
+        [
+          tenant_id, source_session_id, estateV, process, parseInt(harvest_year),
+          chargeC, dtr, ejectC, totalS, flavour_target || null,
+          req.user.id,
+        ]
+      );
+      return res.status(201).json({ profile });
+    } catch (err) {
+      console.error('Create profile from session:', err);
+      return res.status(500).json({ error: 'Failed to create profile.' });
+    }
+  }
+
+  // ── Manual path ──────────────────────────────────────────────────────────
+  if (!estate || !charge_temp_c || !target_dtr || !eject_temp_c || !total_time_target_s) {
+    return res.status(400).json({ error: 'All fields are required for manual profile creation.' });
   }
 
   try {
@@ -105,7 +154,7 @@ router.post('/', requireRole('admin', 'roaster'), async (req, res) => {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'development',$10,$10) RETURNING *`,
       [tenant_id, estate, process, parseInt(harvest_year), parseInt(charge_temp_c),
        parseFloat(target_dtr), parseInt(eject_temp_c), parseInt(total_time_target_s),
-       flavour_target, req.user.id]
+       flavour_target || null, req.user.id]
     );
     return res.status(201).json({ profile });
   } catch (err) {
@@ -190,30 +239,46 @@ router.post('/:id/approve', async (req, res) => {
     return res.status(400).json({ error: 'Profile must be in pending_approval status.' });
   }
 
-  const client = await pool.connect();
   try {
-    await client.query('BEGIN');
-    const { rowCount: retired } = await client.query(
-      `UPDATE oec_roast_profiles SET status = 'retired', updated_at = NOW(), updated_by = $1
-       WHERE tenant_id = $2 AND process = $3 AND harvest_year = $4
-         AND status = 'approved' AND id != $5 AND deleted_at IS NULL`,
-      [req.user.id, tenant_id, profile.process, profile.harvest_year, profile.id]
-    );
-    const { rows: [updated] } = await client.query(
+    const { rows: [updated] } = await pool.query(
       `UPDATE oec_roast_profiles
        SET status = 'approved', approved_at = NOW(), approved_by = $1,
            updated_at = NOW(), updated_by = $1
        WHERE id = $2 RETURNING *`,
       [req.user.id, profile.id]
     );
-    await client.query('COMMIT');
-    return res.json({ profile: updated, retired_previous: retired > 0 });
+    return res.json({ profile: updated });
   } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
     console.error('Approve profile:', err);
     return res.status(500).json({ error: 'Failed to approve profile.' });
-  } finally {
-    client.release();
+  }
+});
+
+// POST /api/profiles/:id/retire
+router.post('/:id/retire', async (req, res) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Only admins can retire profiles.' });
+  }
+  const tenant_id = req.user.tenant_id;
+  const { rows: [profile] } = await pool.query(
+    'SELECT * FROM oec_roast_profiles WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
+    [req.params.id, tenant_id]
+  );
+  if (!profile) return res.status(404).json({ error: 'Profile not found.' });
+  if (profile.status !== 'approved') {
+    return res.status(400).json({ error: 'Only approved profiles can be retired.' });
+  }
+
+  try {
+    const { rows: [updated] } = await pool.query(
+      `UPDATE oec_roast_profiles SET status = 'retired', updated_at = NOW(), updated_by = $1
+       WHERE id = $2 RETURNING *`,
+      [req.user.id, profile.id]
+    );
+    return res.json({ profile: updated });
+  } catch (err) {
+    console.error('Retire profile:', err);
+    return res.status(500).json({ error: 'Failed to retire profile.' });
   }
 });
 

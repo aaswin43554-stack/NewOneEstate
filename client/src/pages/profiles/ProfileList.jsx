@@ -40,7 +40,7 @@ function makeCurveData(profile) {
   return points;
 }
 
-function ProfileCard({ profile, onView, onEdit, onSubmit, onDuplicate, isEditor, isAdmin }) {
+function ProfileCard({ profile, onView, onEdit, onSubmit, onDuplicate, onRetire, isEditor, isAdmin }) {
   const meta = STATUS_META[profile.status] || { cls: 'badge-draft', label: profile.status };
   const curveData = makeCurveData(profile);
   const isRetired = profile.status === 'retired';
@@ -129,6 +129,12 @@ function ProfileCard({ profile, onView, onEdit, onSubmit, onDuplicate, isEditor,
             Approve
           </Button>
         )}
+        {isAdmin && profile.status === 'approved' && (
+          <Button variant="ghost" size="sm" onClick={onRetire}
+            style={{ color: '#A32D2D' }}>
+            Retire
+          </Button>
+        )}
         <Button variant="ghost" size="sm" onClick={onDuplicate}
           className="ml-auto">
           Duplicate
@@ -155,20 +161,45 @@ export default function ProfileList() {
   const isAdmin  = user?.role === 'admin';
   const isEditor = ['admin', 'roaster'].includes(user?.role);
 
+  const [retireConfirm, setRetireConfirm] = useState(null); // profile id to retire
+  const [retiring, setRetiring] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+
   async function submit(id) {
     await api.post(`/profiles/${id}/submit`, {});
     load();
   }
 
-  // Group by process
-  const grouped = profiles.reduce((acc, p) => {
+  async function retire(id) {
+    setRetiring(true);
+    await api.post(`/profiles/${id}/retire`, {});
+    setRetireConfirm(null);
+    setRetiring(false);
+    load();
+  }
+
+  // Split active vs archived
+  const active   = profiles.filter(p => p.status !== 'retired');
+  const archived = profiles.filter(p => p.status === 'retired');
+
+  // Group active by process
+  const grouped = active.reduce((acc, p) => {
     const key = p.process;
     if (!acc[key]) acc[key] = [];
     acc[key].push(p);
     return acc;
   }, {});
 
-  const processOrder = ['Washed', 'Honey', 'Natural', 'Anaerobic'].filter(p => grouped[p]);
+  // Group archived by process
+  const archivedGrouped = archived.reduce((acc, p) => {
+    const key = p.process;
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(p);
+    return acc;
+  }, {});
+
+  const processOrder         = ['Washed', 'Honey', 'Natural', 'Anaerobic'].filter(p => grouped[p]);
+  const archivedProcessOrder = ['Washed', 'Honey', 'Natural', 'Anaerobic'].filter(p => archivedGrouped[p]);
 
   return (
     <Layout>
@@ -187,33 +218,103 @@ export default function ProfileList() {
 
         {loading ? (
           <p className="text-sm text-coffee-400">Loading…</p>
-        ) : processOrder.length === 0 ? (
+        ) : processOrder.length === 0 && archived.length === 0 ? (
           <p className="text-sm text-coffee-300 text-center py-16">
             No roast profiles yet.
           </p>
         ) : (
-          processOrder.map(process => (
-            <div key={process} className="mb-8">
-              <div className="flex items-center gap-3 mb-4">
-                <ProcessBadge process={process} />
-                <div style={{ flex: 1, height: 1, background: '#E0D0BC' }} />
+          <>
+            {/* Active profiles */}
+            {processOrder.map(process => (
+              <div key={process} className="mb-8">
+                <div className="flex items-center gap-3 mb-4">
+                  <ProcessBadge process={process} />
+                  <div style={{ flex: 1, height: 1, background: '#E0D0BC' }} />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {grouped[process].map(p => (
+                    <ProfileCard
+                      key={p.id}
+                      profile={p}
+                      isEditor={isEditor}
+                      isAdmin={isAdmin}
+                      onView={() => navigate(`/profiles/${p.id}`)}
+                      onEdit={() => navigate(`/profiles/${p.id}/edit`)}
+                      onSubmit={() => submit(p.id)}
+                      onRetire={() => setRetireConfirm(p.id)}
+                      onDuplicate={() => navigate(`/profiles/new?from=${p.id}`)}
+                    />
+                  ))}
+                </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {grouped[process].map(p => (
-                  <ProfileCard
-                    key={p.id}
-                    profile={p}
-                    isEditor={isEditor}
-                    isAdmin={isAdmin}
-                    onView={() => navigate(`/profiles/${p.id}`)}
-                    onEdit={() => navigate(`/profiles/${p.id}/edit`)}
-                    onSubmit={() => submit(p.id)}
-                    onDuplicate={() => navigate(`/profiles/new?from=${p.id}`)}
-                  />
+            ))}
+
+            {/* Archive section */}
+            {archived.length > 0 && (
+              <div className="mt-4">
+                <button
+                  type="button"
+                  onClick={() => setArchiveOpen(v => !v)}
+                  className="flex items-center gap-2 text-sm text-coffee-400 mb-4"
+                  style={{ fontWeight: 500 }}
+                >
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      transform: archiveOpen ? 'rotate(90deg)' : 'rotate(0)',
+                      transition: 'transform 150ms',
+                      fontSize: 11,
+                    }}
+                  >▶</span>
+                  Archive · {archived.length} retired profile{archived.length !== 1 ? 's' : ''}
+                </button>
+
+                {archiveOpen && archivedProcessOrder.map(process => (
+                  <div key={process} className="mb-6">
+                    <div className="flex items-center gap-3 mb-3">
+                      <ProcessBadge process={process} />
+                      <div style={{ flex: 1, height: 1, background: '#E0D0BC' }} />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {archivedGrouped[process].map(p => (
+                        <ProfileCard
+                          key={p.id}
+                          profile={p}
+                          isEditor={isEditor}
+                          isAdmin={isAdmin}
+                          onView={() => navigate(`/profiles/${p.id}`)}
+                          onEdit={() => {}}
+                          onSubmit={() => {}}
+                          onRetire={() => {}}
+                          onDuplicate={() => navigate(`/profiles/new?from=${p.id}`)}
+                        />
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
+            )}
+          </>
+        )}
+
+        {/* Retire confirmation modal */}
+        {retireConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: 'rgba(34,21,8,0.2)' }}>
+            <div className="bg-white rounded-2xl border border-coffee-200 w-full max-w-sm p-6">
+              <h3 className="text-base text-coffee-900 mb-2" style={{ fontWeight: 500 }}>Retire Profile</h3>
+              <p className="text-sm text-coffee-600 mb-5">
+                This profile will be moved to the archive. It will no longer be used for variance checks on new roast sessions.
+              </p>
+              <div className="flex gap-3">
+                <Button onClick={() => retire(retireConfirm)} disabled={retiring}
+                  className="flex-1 justify-center" variant="destructive">
+                  {retiring ? 'Retiring…' : 'Retire'}
+                </Button>
+                <Button variant="secondary" onClick={() => setRetireConfirm(null)}>Cancel</Button>
+              </div>
             </div>
-          ))
+          </div>
         )}
       </div>
     </Layout>

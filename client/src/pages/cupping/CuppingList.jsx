@@ -6,9 +6,9 @@ import { PageHeader, Button, DataTable, FilterPills } from '../../components/ui'
 
 const TZ = 'Asia/Vientiane';
 const PURPOSE_LABELS = {
-  development:   'Development',
-  quality_check: 'Quality Check',
-  comparative:   'Comparative',
+  development: 'Development',
+  production:  'Production',
+  sampling:    'Sampling',
 };
 const DECISION_META = {
   adjust:  { cls: 'badge-under-review', label: 'Adjust' },
@@ -17,10 +17,10 @@ const DECISION_META = {
 };
 
 const PURPOSE_OPTIONS = [
-  { value: '', label: 'All Purposes' },
-  { value: 'development',   label: 'Development' },
-  { value: 'quality_check', label: 'Quality Check' },
-  { value: 'comparative',   label: 'Comparative' },
+  { value: '',            label: 'All Purposes' },
+  { value: 'development', label: 'Development' },
+  { value: 'production',  label: 'Production' },
+  { value: 'sampling',    label: 'Sampling' },
 ];
 
 function fmtDate(iso) {

@@ -270,9 +270,9 @@ export default function CuppingNew() {
               <p className="text-sm text-coffee-600 mb-2" style={{ fontWeight: 500 }}>Purpose</p>
               <div className="grid grid-cols-3 gap-2">
                 {[
-                  { value: 'development',   label: 'Development' },
-                  { value: 'quality_check', label: 'Quality Check' },
-                  { value: 'comparative',   label: 'Comparative' },
+                  { value: 'development', label: 'Development' },
+                  { value: 'production',  label: 'Production' },
+                  { value: 'sampling',    label: 'Sampling' },
                 ].map(opt => (
                   <button
                     key={opt.value}

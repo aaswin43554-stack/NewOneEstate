@@ -31,8 +31,8 @@ function fmtDate(iso) {
 
 const PURPOSE_LABELS = {
   development: 'Development',
-  quality_check: 'Quality Check',
-  comparative: 'Comparative',
+  production:  'Production',
+  sampling:    'Sampling',
 };
 
 export default function CuppingDetail() {

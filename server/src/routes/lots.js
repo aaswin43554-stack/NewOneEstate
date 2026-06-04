@@ -230,7 +230,7 @@ router.post(
   requireRole('admin', 'roaster'),
   [
     param('id').isUUID(),
-    body('movement_type').isIn(['reservation', 'roast_consumption', 'write_off']),
+    body('movement_type').isIn(['sales', 'profile_development', 'personal_use', 'write_off']),
     body('weight_change_g').isInt().withMessage('weight_change_g must be a non-zero integer'),
     body('reason').optional({ nullable: true }).isString(),
   ],

@@ -33,6 +33,8 @@ export default function ProfileDetail() {
   const [toast,        setToast]        = useState('');
   const [approving,    setApproving]    = useState(false);
   const [approveModal, setApproveModal] = useState(false);
+  const [retireModal,  setRetireModal]  = useState(false);
+  const [retiring,     setRetiring]     = useState(false);
 
   function load() {
     setLoading(true);
@@ -50,13 +52,15 @@ export default function ProfileDetail() {
   async function approve() {
     setApproving(true);
     const res = await api.post(`/profiles/${id}/approve`, {});
-    const d   = await res.json();
-    if (res.ok) {
-      if (d.retired_previous) setToast('Previous profile retired.');
-      setApproveModal(false);
-      load();
-    }
+    if (res.ok) { setApproveModal(false); load(); }
     setApproving(false);
+  }
+
+  async function retire() {
+    setRetiring(true);
+    const res = await api.post(`/profiles/${id}/retire`, {});
+    if (res.ok) { setRetireModal(false); setToast('Profile retired to archive.'); load(); }
+    setRetiring(false);
   }
 
   if (loading) return <Layout><div className="px-6 py-6 text-sm text-coffee-400">Loading…</div></Layout>;
@@ -132,13 +136,20 @@ export default function ProfileDetail() {
             )}
 
             {profile.status === 'approved' && (
-              <div>
-                <p className="text-sm text-coffee-600 mb-3">
+              <div className="space-y-3">
+                <p className="text-sm text-coffee-600">
                   Approved by {profile.approved_by_name} on {fmtDate(profile.approved_at)}
                 </p>
-                <Button variant="secondary" onClick={() => navigate(`/profiles/new?from=${id}`)}>
-                  Duplicate for Next Harvest
-                </Button>
+                <div className="flex gap-3">
+                  <Button variant="secondary" onClick={() => navigate(`/profiles/new?from=${id}`)}>
+                    Duplicate for Next Harvest
+                  </Button>
+                  {isAdmin && (
+                    <Button variant="destructive" onClick={() => setRetireModal(true)}>
+                      Retire to Archive
+                    </Button>
+                  )}
+                </div>
               </div>
             )}
 
@@ -156,27 +167,38 @@ export default function ProfileDetail() {
 
       {/* Approve modal */}
       {approveModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: 'rgba(34,21,8,0.2)' }}
-        >
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(34,21,8,0.2)' }}>
           <div className="bg-white rounded-2xl border border-coffee-200 w-full max-w-sm p-6">
             <h2 className="text-base text-coffee-900 mb-2" style={{ fontWeight: 500 }}>Approve Profile</h2>
             <p className="text-sm text-coffee-600 mb-5">
-              Approving this will retire the current approved {profile.process} profile if one exists.
+              This profile will become active. Multiple approved profiles can be active at the same time.
             </p>
             <div className="flex gap-3">
-              <Button
-                onClick={approve}
-                disabled={approving}
-                className="flex-1 justify-center"
-                style={{ background: '#3B6D11', color: '#fff' }}
-              >
+              <Button onClick={approve} disabled={approving} className="flex-1 justify-center"
+                style={{ background: '#3B6D11', color: '#fff' }}>
                 {approving ? 'Approving…' : 'Approve'}
               </Button>
-              <Button variant="secondary" onClick={() => setApproveModal(false)}>
-                Cancel
+              <Button variant="secondary" onClick={() => setApproveModal(false)}>Cancel</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Retire modal */}
+      {retireModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(34,21,8,0.2)' }}>
+          <div className="bg-white rounded-2xl border border-coffee-200 w-full max-w-sm p-6">
+            <h2 className="text-base text-coffee-900 mb-2" style={{ fontWeight: 500 }}>Retire Profile</h2>
+            <p className="text-sm text-coffee-600 mb-5">
+              This profile will be moved to the archive and will no longer be used for variance checks.
+            </p>
+            <div className="flex gap-3">
+              <Button onClick={retire} disabled={retiring} className="flex-1 justify-center" variant="destructive">
+                {retiring ? 'Retiring…' : 'Retire to Archive'}
               </Button>
+              <Button variant="secondary" onClick={() => setRetireModal(false)}>Cancel</Button>
             </div>
           </div>
         </div>
