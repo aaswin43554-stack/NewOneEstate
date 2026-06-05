@@ -3,9 +3,12 @@ const pool = require('../config/db');
 const ROAST_LOSS = { Washed: 0.17, Honey: 0.16, Natural: 0.18, Anaerobic: 0.18 };
 const REST_DAYS  = { Washed: 4,    Honey: 5,    Natural: 7,    Anaerobic: 7    };
 
+// 4-state lifecycle matching One Estate admin panel
 const STATE_SEQUENCE = [
-  'upcoming', 'open_for_requests', 'closed',
-  'roasting_in_progress', 'resting', 'dispatched', 'archived',
+  'upcoming',
+  'open_for_requests',
+  'roasting_in_progress',
+  'allocation_closed',
 ];
 
 function calculateProjectedBags(planned_green_quantity_g, planned_bag_size_g, process) {
@@ -37,7 +40,6 @@ async function generateAllocationCode(tenant_id, client) {
 
   let next_val;
   if (rows.length === 0) {
-    // Bootstrap: derive starting point from existing allocations so we never collide
     const { rows: existing } = await client.query(
       `SELECT MAX(CAST(regexp_replace(allocation_code, '^[^-]+-', '') AS INTEGER)) AS max_num
        FROM oec_allocations WHERE tenant_id = $1`,
@@ -49,7 +51,7 @@ async function generateAllocationCode(tenant_id, client) {
       'INSERT INTO oec_allocation_sequence (tenant_id, next_val) VALUES ($1, $2)',
       [tenant_id, next_val + 1]
     );
-    console.log(`[ALLOC] Bootstrapped sequence for tenant ${tenant_id} — max existing: ${max_num}, starting at: ${next_val}`);
+    console.log(`[ALLOC] Bootstrapped sequence for tenant ${tenant_id} — starting at: ${next_val}`);
   } else {
     next_val = rows[0].next_val;
     await client.query(
@@ -68,10 +70,13 @@ function getNextState(current_state) {
 }
 
 async function checkTransitionPreconditions(allocation, to_state, tenant_id) {
-  const { id: allocation_id, state: from_state, process, lot_id,
-    planned_green_quantity_g, planned_bag_size_g } = allocation;
+  const {
+    id: allocation_id, state: from_state, process, lot_id,
+    planned_green_quantity_g, planned_bag_size_g,
+  } = allocation;
   const checks = [];
 
+  // upcoming → open_for_requests
   if (from_state === 'upcoming' && to_state === 'open_for_requests') {
     const { rows } = await pool.query(
       `SELECT id FROM oec_roast_profiles
@@ -102,7 +107,9 @@ async function checkTransitionPreconditions(allocation, to_state, tenant_id) {
     }
   }
 
-  if (from_state === 'closed' && to_state === 'roasting_in_progress') {
+  // open_for_requests → roasting_in_progress
+  // (absorbs the old "closed → roasting_in_progress" checks)
+  if (from_state === 'open_for_requests' && to_state === 'roasting_in_progress') {
     const { rows: reqRows } = await pool.query(
       `SELECT COALESCE(SUM(quantity_bags), 0)::int AS total
        FROM oec_allocation_requests
@@ -114,7 +121,7 @@ async function checkTransitionPreconditions(allocation, to_state, tenant_id) {
       label: 'Confirmed requests',
       passed: totalConfirmed > 0,
       reason: totalConfirmed > 0 ? null :
-        'No confirmed requests. Confirm at least one request before roasting.',
+        'No confirmed requests. Confirm at least one request before starting production.',
     });
 
     const projected = calculateProjectedBags(planned_green_quantity_g, planned_bag_size_g, process);
@@ -139,7 +146,8 @@ async function checkTransitionPreconditions(allocation, to_state, tenant_id) {
     });
   }
 
-  if (from_state === 'roasting_in_progress' && to_state === 'resting') {
+  // roasting_in_progress → allocation_closed
+  if (from_state === 'roasting_in_progress' && to_state === 'allocation_closed') {
     const { rows } = await pool.query(
       `SELECT batch_code FROM oec_roast_sessions
        WHERE allocation_id = $1 AND is_development = false

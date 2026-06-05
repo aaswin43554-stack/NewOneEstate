@@ -8,6 +8,111 @@ const {
 } = require('../services/allocationService');
 
 const router = express.Router();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/allocations/sync-from-admin  (NO JWT — uses webhook secret auth)
+// Must be declared BEFORE router.use(requireAuth) so JWT check is bypassed.
+// Called by the One Estate admin whenever an allocation is created/updated.
+// Payload: { external_id, allocation_code, estate, process, harvest_year,
+//            planned_green_quantity_g, planned_bag_size_g, planned_price_json,
+//            window_open_date, window_close_date, state, lot_id, tenant_id }
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/sync-from-admin', async (req, res) => {
+  const secret = process.env.ONE_ESTATE_WEBHOOK_SECRET;
+  const auth   = req.headers['authorization'] || '';
+  const token  = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+  if (!secret || !token || token !== secret) {
+    return res.status(401).json({ error: 'Unauthorized.' });
+  }
+
+  const {
+    external_id, allocation_code, estate, process: lotProcess, harvest_year,
+    planned_green_quantity_g, planned_bag_size_g, planned_price_json,
+    window_open_date, window_close_date, state, lot_id, tenant_id,
+  } = req.body;
+
+  if (!external_id || !allocation_code || !estate || !lotProcess || !harvest_year
+      || !planned_green_quantity_g || !planned_bag_size_g || !state || !tenant_id) {
+    return res.status(400).json({ error: 'Missing required sync fields.' });
+  }
+
+  const VALID_STATES = ['upcoming', 'open_for_requests', 'roasting_in_progress', 'allocation_closed'];
+  if (!VALID_STATES.includes(state)) {
+    return res.status(400).json({ error: `Invalid state: ${state}` });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const { rows: [existing] } = await client.query(
+      `SELECT id, state FROM oec_allocations
+       WHERE tenant_id = $1 AND external_id = $2 AND deleted_at IS NULL`,
+      [tenant_id, external_id]
+    );
+
+    let allocation;
+
+    if (existing) {
+      const { rows: [updated] } = await client.query(
+        `UPDATE oec_allocations SET
+           estate = $1, harvest_year = $2,
+           planned_green_quantity_g = $3, planned_bag_size_g = $4,
+           planned_price_json = $5,
+           window_open_date = $6, window_close_date = $7,
+           state = $8::ops.allocation_state,
+           updated_at = NOW()
+         WHERE id = $9 RETURNING *`,
+        [
+          estate, parseInt(harvest_year),
+          parseInt(planned_green_quantity_g), parseInt(planned_bag_size_g),
+          JSON.stringify(planned_price_json || {}),
+          window_open_date || null, window_close_date || null,
+          state, existing.id,
+        ]
+      );
+      if (existing.state !== state) {
+        await client.query(
+          `INSERT INTO oec_allocation_state_log
+             (allocation_id, from_state, to_state, notes)
+           VALUES ($1, $2::ops.allocation_state, $3::ops.allocation_state, 'Synced from One Estate admin')`,
+          [existing.id, existing.state, state]
+        );
+      }
+      allocation = updated;
+    } else {
+      const { rows: [created] } = await client.query(
+        `INSERT INTO oec_allocations
+           (tenant_id, allocation_code, external_id, source, lot_id,
+            estate, process, harvest_year,
+            planned_green_quantity_g, planned_bag_size_g, planned_price_json,
+            window_open_date, window_close_date, state)
+         VALUES ($1,$2,$3,'one_estate',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::ops.allocation_state)
+         RETURNING *`,
+        [
+          tenant_id, allocation_code, external_id, lot_id || null,
+          estate, lotProcess, parseInt(harvest_year),
+          parseInt(planned_green_quantity_g), parseInt(planned_bag_size_g),
+          JSON.stringify(planned_price_json || {}),
+          window_open_date || null, window_close_date || null,
+          state,
+        ]
+      );
+      allocation = created;
+    }
+
+    await client.query('COMMIT');
+    return res.json({ allocation, action: existing ? 'updated' : 'created' });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('[ALLOC] sync-from-admin failed:', err.message);
+    return res.status(500).json({ error: 'Sync failed.', detail: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// All routes below this line require JWT auth
 router.use(requireAuth);
 
 async function fetchAllocation(id, tenant_id) {
@@ -18,15 +123,13 @@ async function fetchAllocation(id, tenant_id) {
   return a || null;
 }
 
-function archivedGuard(allocation, res) {
-  if (allocation.state === 'archived') {
-    res.status(403).json({ error: 'This allocation is archived and cannot be modified. The record is sealed.' });
+function closedGuard(allocation, res) {
+  if (allocation.state === 'allocation_closed') {
+    res.status(403).json({ error: 'This allocation is closed and cannot be modified.' });
     return true;
   }
   return false;
 }
-
-const STATES_AFTER_CLOSED = ['roasting_in_progress', 'resting', 'dispatched', 'archived'];
 
 // POST /api/allocations
 router.post('/', requireRole('admin', 'roaster'), async (req, res) => {
@@ -53,8 +156,8 @@ router.post('/', requireRole('admin', 'roaster'), async (req, res) => {
       `INSERT INTO oec_allocations
          (tenant_id, allocation_code, lot_id, estate, process, harvest_year,
           planned_green_quantity_g, planned_bag_size_g, planned_price_json,
-          window_open_date, window_close_date, state, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'upcoming',$12,$12)
+          window_open_date, window_close_date, state, source, created_by, updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'upcoming','manual',$12,$12)
        RETURNING *`,
       [
         tenant_id, allocation_code, lot_id, estate, process, parseInt(harvest_year),
@@ -72,9 +175,7 @@ router.post('/', requireRole('admin', 'roaster'), async (req, res) => {
     });
     console.error(`[ALLOC][ALLOC_CREATE_001] Create allocation failed for tenant ${tenant_id}`);
     console.error(`[ALLOC][ALLOC_CREATE_001] pg code: ${err.code || 'N/A'} | message: ${err.message}`);
-    console.error(`[ALLOC][ALLOC_CREATE_001] body: ${JSON.stringify(req.body)}`);
-    console.error(err.stack);
-    return res.status(500).json({ error: 'Failed to create allocation.', detail: err.message, code: 'ALLOC_CREATE_001' });
+    return res.status(500).json({ error: 'Failed to create allocation.', code: 'ALLOC_CREATE_001' });
   } finally {
     client.release();
   }
@@ -85,9 +186,9 @@ router.put('/:id', requireRole('admin', 'roaster'), async (req, res) => {
   const tenant_id = req.user.tenant_id;
   const alloc = await fetchAllocation(req.params.id, tenant_id);
   if (!alloc) return res.status(404).json({ error: 'Allocation not found.' });
-  if (archivedGuard(alloc, res)) return;
-  if (['closed', ...STATES_AFTER_CLOSED].includes(alloc.state)) {
-    return res.status(400).json({ error: 'Cannot edit after allocation is closed.' });
+  if (closedGuard(alloc, res)) return;
+  if (alloc.state === 'roasting_in_progress') {
+    return res.status(400).json({ error: 'Cannot edit core fields while roasting is in progress.' });
   }
 
   const { estate, planned_green_quantity_g, planned_bag_size_g, planned_price_json, window_open_date, window_close_date } = req.body;
@@ -126,7 +227,7 @@ router.put('/:id/transition', requireRole('admin', 'roaster'), async (req, res) 
   const tenant_id = req.user.tenant_id;
   const alloc = await fetchAllocation(req.params.id, tenant_id);
   if (!alloc) return res.status(404).json({ error: 'Allocation not found.' });
-  if (archivedGuard(alloc, res)) return;
+  if (closedGuard(alloc, res)) return;
 
   const next_state = getNextState(alloc.state);
   if (!next_state) {
@@ -217,11 +318,15 @@ router.post('/:id/requests', requireRole('admin', 'roaster'), async (req, res) =
   const tenant_id = req.user.tenant_id;
   const alloc = await fetchAllocation(req.params.id, tenant_id);
   if (!alloc) return res.status(404).json({ error: 'Allocation not found.' });
-  if (archivedGuard(alloc, res)) return;
+  if (closedGuard(alloc, res)) return;
+
+  // Requests can be added while open, or by admin after roasting has started
   const canAddRequest = alloc.state === 'open_for_requests' ||
-    (alloc.state === 'closed' && req.user.role === 'admin');
+    (alloc.state === 'roasting_in_progress' && req.user.role === 'admin');
   if (!canAddRequest) {
-    return res.status(400).json({ error: 'Requests can only be added while open, or by an admin when closed.' });
+    return res.status(400).json({
+      error: 'Requests can only be added while Open for Requests, or by an admin during Roasting.',
+    });
   }
 
   const { contact_name, contact_method, channel, quantity_bags, notes } = req.body;
@@ -248,7 +353,7 @@ router.put('/:id/requests/:req_id', requireRole('admin', 'roaster'), async (req,
   const tenant_id = req.user.tenant_id;
   const alloc = await fetchAllocation(req.params.id, tenant_id);
   if (!alloc) return res.status(404).json({ error: 'Allocation not found.' });
-  if (archivedGuard(alloc, res)) return;
+  if (closedGuard(alloc, res)) return;
 
   const { rows: [request] } = await pool.query(
     'SELECT * FROM oec_allocation_requests WHERE id = $1 AND allocation_id = $2',
@@ -258,7 +363,6 @@ router.put('/:id/requests/:req_id', requireRole('admin', 'roaster'), async (req,
 
   const { status: newStatus, quantity_bags, contact_name, channel, notes } = req.body;
 
-  // Field edit (no status change) — admin only
   if (!newStatus && (quantity_bags !== undefined || contact_name !== undefined || channel !== undefined || notes !== undefined)) {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Only admins can edit request fields.' });
     const updates = [];
@@ -281,7 +385,6 @@ router.put('/:id/requests/:req_id', requireRole('admin', 'roaster'), async (req,
     }
   }
 
-  // Status transition
   const allowed = { pending: ['confirmed'], confirmed: ['fulfilled'] };
   if (!allowed[request.status] || !allowed[request.status].includes(newStatus)) {
     return res.status(400).json({ error: `Cannot transition from '${request.status}' to '${newStatus}'.` });
@@ -329,8 +432,6 @@ router.get('/', async (req, res) => {
   if (process) { params.push(process); conditions.push(`a.process = $${params.length}`); }
 
   try {
-    // Single query: all allocations + request counts + dispatch date in one round-trip.
-    // The dispatch_date subquery replaces the N+1 calculateDispatchDate loop.
     const { rows } = await pool.query(
       `SELECT a.*,
               l.lot_code,
@@ -416,7 +517,7 @@ router.get('/:id', async (req, res) => {
       [alloc.id]
     ),
     pool.query(
-      `SELECT batch_code, status, started_at, ended_at, eject_temp_c, variance_flagged, dtr
+      `SELECT id, batch_code, status, started_at, ended_at, eject_temp_c, variance_flagged, dtr
        FROM oec_roast_sessions
        WHERE allocation_id = $1 AND is_development = false AND deleted_at IS NULL`,
       [alloc.id]

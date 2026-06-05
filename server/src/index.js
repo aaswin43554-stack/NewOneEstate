@@ -101,7 +101,7 @@ app.get('/api/dashboard-stats', requireAuth, async (req, res) => {
       { rows: activityRows },
     ] = await Promise.all([
       pool.query("SELECT COALESCE(SUM(current_weight_g), 0)::bigint AS total_stock FROM oec_lots WHERE tenant_id = $1 AND deleted_at IS NULL", [tenant_id]),
-      pool.query("SELECT COUNT(*)::int AS active_allocs FROM oec_allocations WHERE tenant_id = $1 AND state != 'archived' AND deleted_at IS NULL", [tenant_id]),
+      pool.query("SELECT COUNT(*)::int AS active_allocs FROM oec_allocations WHERE tenant_id = $1 AND state != 'allocation_closed' AND deleted_at IS NULL", [tenant_id]),
       pool.query("SELECT COUNT(*)::int AS total_contacts FROM oec_contacts WHERE tenant_id = $1 AND deleted_at IS NULL", [tenant_id]),
       pool.query("SELECT COUNT(*)::int AS total_roasts FROM oec_roast_sessions WHERE tenant_id = $1 AND deleted_at IS NULL", [tenant_id]),
       pool.query("SELECT COALESCE(SUM(quantity_bags), 0)::int AS requested_bags FROM oec_allocation_requests WHERE tenant_id = $1 AND status != 'fulfilled'", [tenant_id]),

@@ -4,42 +4,33 @@ import Layout from '../../components/Layout';
 import { api } from '../../lib/api';
 import { PageHeader, Button, ProcessBadge, StatusBadge } from '../../components/ui';
 
-// Map internal states to three Kanban columns
+// 4 columns — one per state, matching One Estate admin panel
 const KANBAN_COLUMNS = [
-  {
-    key: 'pending',
-    label: 'Pending',
-    states: ['upcoming', 'open_for_requests', 'closed'],
-  },
-  {
-    key: 'in_progress',
-    label: 'In Progress',
-    states: ['roasting_in_progress', 'resting'],
-  },
-  {
-    key: 'dispatched',
-    label: 'Dispatched',
-    states: ['dispatched', 'archived'],
-  },
+  { key: 'upcoming',             label: 'Upcoming',              states: ['upcoming'] },
+  { key: 'open_for_requests',    label: 'Open for Requests',     states: ['open_for_requests'] },
+  { key: 'roasting_in_progress', label: 'Roasting in Progress',  states: ['roasting_in_progress'] },
+  { key: 'allocation_closed',    label: 'Allocation Closed',     states: ['allocation_closed'] },
 ];
 
 const STATE_TO_STATUS = {
   upcoming:             'draft',
   open_for_requests:    'published',
-  closed:               'under_review',
   roasting_in_progress: 'under_review',
-  resting:              'under_review',
-  dispatched:           'published',
-  archived:             'draft',
+  allocation_closed:    'draft',
 };
+
 const STATE_LABELS = {
   upcoming:             'Upcoming',
-  open_for_requests:    'Open',
-  closed:               'Closed',
-  roasting_in_progress: 'Roasting',
-  resting:              'Resting',
-  dispatched:           'Dispatched',
-  archived:             'Archived',
+  open_for_requests:    'Open for Requests',
+  roasting_in_progress: 'Roasting in Progress',
+  allocation_closed:    'Allocation Closed',
+};
+
+const COLUMN_ACCENT = {
+  upcoming:             '#8B6A47',
+  open_for_requests:    '#3B6D11',
+  roasting_in_progress: '#BA7517',
+  allocation_closed:    '#533A24',
 };
 
 function AllocationCard({ alloc, onClick }) {
@@ -57,7 +48,6 @@ function AllocationCard({ alloc, onClick }) {
       onClick={onClick}
       className="bg-white border border-coffee-200 rounded-[10px] p-4 cursor-pointer transition-colors duration-150 hover:border-coffee-300"
     >
-      {/* Header row */}
       <div className="flex items-start justify-between mb-2">
         <span className="text-sm text-coffee-900" style={{ fontWeight: 500 }}>
           {alloc.allocation_code}
@@ -65,7 +55,17 @@ function AllocationCard({ alloc, onClick }) {
         <ProcessBadge process={alloc.process} />
       </div>
 
-      {/* State badge */}
+      {alloc.source === 'one_estate' && (
+        <div className="mb-2">
+          <span
+            className="inline-block px-1.5 py-0.5 rounded text-xs"
+            style={{ background: '#EAF3DE', color: '#3B6D11', fontSize: 10 }}
+          >
+            From One Estate
+          </span>
+        </div>
+      )}
+
       <div className="mb-3">
         <StatusBadge
           status={STATE_TO_STATUS[alloc.state] || 'draft'}
@@ -73,7 +73,6 @@ function AllocationCard({ alloc, onClick }) {
         />
       </div>
 
-      {/* Lot pill */}
       {alloc.lot_code && (
         <div className="mb-2">
           <span
@@ -85,12 +84,10 @@ function AllocationCard({ alloc, onClick }) {
         </div>
       )}
 
-      {/* Bag count */}
       <p className="text-xs text-coffee-400 mb-2">
         {alloc.confirmed_bags ?? 0} / {alloc.projected_bags ?? 0} bags
       </p>
 
-      {/* Progress bar */}
       <div
         className="w-full rounded-full overflow-hidden mb-2"
         style={{ height: 3, background: '#F2EAE0' }}
@@ -101,7 +98,6 @@ function AllocationCard({ alloc, onClick }) {
         />
       </div>
 
-      {/* Dispatch date */}
       {alloc.dispatch_date && (
         <p className="text-xs text-coffee-300">
           Dispatch: {alloc.dispatch_date}
@@ -112,16 +108,23 @@ function AllocationCard({ alloc, onClick }) {
 }
 
 function KanbanColumn({ column, allocations, onCardClick }) {
+  const accent = COLUMN_ACCENT[column.key] || '#8B6A47';
+
   return (
     <div className="flex flex-col min-h-[200px]">
-      {/* Column header */}
       <div
         className="flex items-center justify-between px-3 py-2 rounded-xl mb-3"
         style={{ background: '#F2EAE0' }}
       >
-        <span className="text-xs text-coffee-600 uppercase tracking-wide" style={{ fontWeight: 500 }}>
-          {column.label}
-        </span>
+        <div className="flex items-center gap-2">
+          <span
+            className="w-2 h-2 rounded-full flex-shrink-0"
+            style={{ background: accent }}
+          />
+          <span className="text-xs text-coffee-600 uppercase tracking-wide" style={{ fontWeight: 500 }}>
+            {column.label}
+          </span>
+        </div>
         <span
           className="inline-flex items-center justify-center rounded-full text-xs text-coffee-500"
           style={{ width: 20, height: 20, background: '#E0D0BC' }}
@@ -130,12 +133,9 @@ function KanbanColumn({ column, allocations, onCardClick }) {
         </span>
       </div>
 
-      {/* Cards */}
       <div className="space-y-2 flex-1">
         {allocations.length === 0 ? (
-          <div
-            className="border border-dashed border-coffee-200 rounded-[10px] p-4 text-center text-xs text-coffee-300"
-          >
+          <div className="border border-dashed border-coffee-200 rounded-[10px] p-4 text-center text-xs text-coffee-300">
             Empty
           </div>
         ) : (
@@ -177,7 +177,6 @@ export default function AllocationDashboard() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Group by kanban column
   const grouped = KANBAN_COLUMNS.reduce((acc, col) => {
     acc[col.key] = allocations.filter(a => col.states.includes(a.state));
     return acc;
@@ -202,8 +201,8 @@ export default function AllocationDashboard() {
           <p className="text-sm text-coffee-400">Loading…</p>
         ) : (
           <>
-            {/* Desktop: 3-column Kanban */}
-            <div className="hidden md:grid grid-cols-3 gap-4">
+            {/* Desktop: 4-column Kanban */}
+            <div className="hidden md:grid grid-cols-4 gap-4">
               {KANBAN_COLUMNS.map(col => (
                 <KanbanColumn
                   key={col.key}
@@ -219,9 +218,11 @@ export default function AllocationDashboard() {
               {KANBAN_COLUMNS.map(col => (
                 <div key={col.key}>
                   <div className="flex items-center gap-2 mb-3">
-                    <p className="text-xs text-coffee-400 uppercase tracking-wide">
-                      {col.label}
-                    </p>
+                    <span
+                      className="w-2 h-2 rounded-full"
+                      style={{ background: COLUMN_ACCENT[col.key] }}
+                    />
+                    <p className="text-xs text-coffee-400 uppercase tracking-wide">{col.label}</p>
                     <span className="text-xs text-coffee-300">({grouped[col.key].length})</span>
                   </div>
                   <div className="space-y-2">

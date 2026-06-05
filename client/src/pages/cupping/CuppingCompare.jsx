@@ -14,7 +14,17 @@ const PROCESS_OPTIONS = [
   { value: 'Anaerobic', label: 'Anaerobic' },
 ];
 
-const ATTRS = ['aroma', 'flavour', 'acidity', 'body', 'sweetness', 'aftertaste', 'overall'];
+// SCA 7 scored attributes (excludes cup-check attributes which don't plot meaningfully)
+const ATTRS = ['fragrance_aroma', 'flavor', 'aftertaste', 'acidity', 'body', 'balance', 'overall'];
+const ATTR_LABELS = {
+  fragrance_aroma: 'Fragrance/Aroma',
+  flavor:          'Flavor',
+  aftertaste:      'Aftertaste',
+  acidity:         'Acidity',
+  body:            'Body',
+  balance:         'Balance',
+  overall:         'Overall',
+};
 
 // Distinct coffee-palette colors for overlaid radars
 const SERIES_COLORS = [
@@ -52,8 +62,8 @@ function CompareSection({ title, sessions, processName }) {
   }
 
   const radarData = ATTRS.map(attr => {
-    const point = { attribute: attr.charAt(0).toUpperCase() + attr.slice(1) };
-    sessions.forEach((s, i) => { point[`s${i}`] = s[`score_${attr}`]; });
+    const point = { attribute: ATTR_LABELS[attr] || attr };
+    sessions.forEach((s, i) => { point[`s${i}`] = parseFloat(s[`score_${attr}`]) || 6; });
     return point;
   });
 
@@ -65,7 +75,7 @@ function CompareSection({ title, sessions, processName }) {
         <RadarChart data={radarData} margin={{ top: 10, right: 30, bottom: 10, left: 30 }}>
           <PolarGrid stroke="#E0D0BC" />
           <PolarAngleAxis dataKey="attribute" tick={<CustomTick />} />
-          <PolarRadiusAxis domain={[0, 10]} tick={false} axisLine={false} />
+          <PolarRadiusAxis domain={[6, 10]} tick={false} axisLine={false} />
           <Tooltip
             contentStyle={{
               background: '#FDFAF6', border: '1px solid #E0D0BC',
@@ -123,8 +133,8 @@ function CompareSection({ title, sessions, processName }) {
               <th className="text-left px-3 py-2 text-coffee-400 uppercase tracking-wide">Batch</th>
               <th className="text-right px-3 py-2 text-coffee-400 uppercase tracking-wide">Days</th>
               {ATTRS.map(a => (
-                <th key={a} className="text-right px-2 py-2 text-coffee-400 uppercase tracking-wide capitalize">
-                  {a.slice(0, 3)}
+                <th key={a} className="text-right px-2 py-2 text-coffee-400 uppercase tracking-wide">
+                  {(ATTR_LABELS[a] || a).slice(0, 3)}
                 </th>
               ))}
               <th className="text-left px-3 py-2 text-coffee-400 uppercase tracking-wide">Decision</th>
@@ -132,7 +142,7 @@ function CompareSection({ title, sessions, processName }) {
           </thead>
           <tbody>
             {sessions.map((s, i) => {
-              const total = ATTRS.reduce((sum, a) => sum + (s[`score_${a}`] || 0), 0);
+              const total = ATTRS.reduce((sum, a) => sum + (parseFloat(s[`score_${a}`]) || 0), 0);
               const meta  = DECISION_META[s.final_decision] || { cls: 'badge-draft', label: s.final_decision };
               return (
                 <tr

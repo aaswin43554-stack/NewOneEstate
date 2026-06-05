@@ -19,20 +19,33 @@ const JOURNAL_STATUS_MAP = {
   missing:      { status: 'missing',      label: 'Missing' },
 };
 
+// 4-state system matching One Estate admin panel
 const STATE_LABELS = {
-  upcoming: 'Upcoming', open_for_requests: 'Open for Requests', closed: 'Closed',
-  roasting_in_progress: 'Roasting', resting: 'Resting',
-  dispatched: 'Dispatched', archived: 'Archived',
+  upcoming:             'Upcoming',
+  open_for_requests:    'Open for Requests',
+  roasting_in_progress: 'Roasting in Progress',
+  allocation_closed:    'Allocation Closed',
 };
+
+const STATE_TO_STATUS = {
+  upcoming:             'draft',
+  open_for_requests:    'published',
+  roasting_in_progress: 'under_review',
+  allocation_closed:    'draft',
+};
+
 const NEXT_LABELS = {
-  upcoming: 'Open for Requests', open_for_requests: 'Close', closed: 'Start Roasting',
-  roasting_in_progress: 'Move to Resting', resting: 'Dispatch', dispatched: 'Archive',
+  upcoming:             'Open for Requests',
+  open_for_requests:    'Start Roasting',
+  roasting_in_progress: 'Close Allocation',
 };
+
 const REQUEST_STATUS_MAP = {
   pending:   { cls: 'badge-draft',        label: 'Pending' },
   confirmed: { cls: 'badge-published',    label: 'Confirmed' },
   fulfilled: { cls: 'badge-under-review', label: 'Fulfilled' },
 };
+
 const REST_DAYS_MAP = { Washed: 4, Honey: 5, Natural: 7, Anaerobic: 7 };
 
 function fmtDate(iso) {
@@ -55,12 +68,12 @@ export default function AllocationDetail() {
   const [reqForm, setReqForm] = useState({
     contact_name: '', contact_method: '', channel: 'WhatsApp', quantity_bags: 1, notes: '',
   });
-  const [reqOpen,   setReqOpen]   = useState(false);
-  const [reqSaving, setReqSaving] = useState(false);
-  const [reqError,  setReqError]  = useState('');
-  const [rowErrors,    setRowErrors]    = useState({});
-  const [rowActioning, setRowActioning] = useState({});
-  const [editingReq,   setEditingReq]   = useState(null); // { id, quantity_bags }
+  const [reqOpen,       setReqOpen]       = useState(false);
+  const [reqSaving,     setReqSaving]     = useState(false);
+  const [reqError,      setReqError]      = useState('');
+  const [rowErrors,     setRowErrors]     = useState({});
+  const [rowActioning,  setRowActioning]  = useState({});
+  const [editingReq,    setEditingReq]    = useState(null);
   const [editReqSaving, setEditReqSaving] = useState(false);
   const [journalDocs,       setJournalDocs]       = useState(null);
   const [journalLoading,    setJournalLoading]    = useState(false);
@@ -68,7 +81,7 @@ export default function AllocationDetail() {
 
   const load = useCallback(() => {
     setLoading(true);
-    setRowErrors({});   // clear stale per-row errors on every reload
+    setRowErrors({});
     api.get(`/allocations/${id}`)
       .then(r => r.json())
       .then(setData)
@@ -150,11 +163,16 @@ export default function AllocationDetail() {
   if (!data)   return <Layout><div className="px-6 py-6 text-sm" style={{ color: '#A32D2D' }}>Allocation not found.</div></Layout>;
 
   const { allocation: a, lot, requests, state_log, roast_sessions, dispatch_date, projected_bags, confirmed_bags } = data;
-  const isArchived = a.state === 'archived';
-  const isAdmin    = ['admin', 'roaster'].includes(user?.role);
-  const bagPct     = projected_bags > 0 ? Math.min(100, Math.round((confirmed_bags / projected_bags) * 100)) : 0;
+  const isClosed  = a.state === 'allocation_closed';
+  const isAdmin   = ['admin', 'roaster'].includes(user?.role);
+  const bagPct    = projected_bags > 0 ? Math.min(100, Math.round((confirmed_bags / projected_bags) * 100)) : 0;
   const bagBarColor = bagPct >= 100 ? '#A32D2D' : bagPct >= 90 ? '#BA7517' : '#3B6D11';
-  const allChecksPassed = transitionChecks?.checks?.every(c => c.passed);
+  const allChecksPassed = transitionChecks?.checks?.every(c => c.passed) ?? true;
+
+  // Can add requests while open, or admin while roasting
+  const canAddRequests = !isClosed && isAdmin &&
+    (a.state === 'open_for_requests' ||
+     (a.state === 'roasting_in_progress' && user?.role === 'admin'));
 
   return (
     <Layout>
@@ -165,9 +183,17 @@ export default function AllocationDetail() {
           <ProcessBadge process={a.process} />
           <span className="text-sm text-coffee-400">{a.harvest_year}</span>
           <StatusBadge
-            status={a.state === 'archived' ? 'archived' : a.state === 'dispatched' ? 'published' : 'draft'}
+            status={STATE_TO_STATUS[a.state] || 'draft'}
             label={STATE_LABELS[a.state] || a.state}
           />
+          {a.source === 'one_estate' && (
+            <span
+              className="text-xs px-2 py-0.5 rounded"
+              style={{ background: '#EAF3DE', color: '#3B6D11' }}
+            >
+              Synced from One Estate
+            </span>
+          )}
         </div>
 
         {/* State transition */}
@@ -184,12 +210,12 @@ export default function AllocationDetail() {
                 </p>
               )}
             </div>
-            {!isArchived && NEXT_LABELS[a.state] && isAdmin && (
+            {!isClosed && NEXT_LABELS[a.state] && isAdmin && (
               <Button onClick={openTransitionModal}>
                 Move to: {NEXT_LABELS[a.state]}
               </Button>
             )}
-            {isArchived && <p className="text-xs text-coffee-400">This allocation is sealed.</p>}
+            {isClosed && <p className="text-xs text-coffee-400">This allocation is closed.</p>}
           </div>
         </div>
 
@@ -198,7 +224,7 @@ export default function AllocationDetail() {
           <div className="flex items-center justify-between mb-4">
             <p className="text-xs text-coffee-400 uppercase tracking-wide">Requests</p>
             <div className="flex gap-2">
-              {!isArchived && isAdmin && (a.state === 'open_for_requests' || a.state === 'closed') && (
+              {canAddRequests && (
                 <>
                   <Button variant="secondary" size="sm" onClick={() => setReqOpen(p => !p)}>
                     + Add Request
@@ -206,9 +232,9 @@ export default function AllocationDetail() {
                   <Link to={`/allocations/${id}/add-request`}>
                     <Button variant="ghost" size="sm">Quick Add</Button>
                   </Link>
-                  {a.state === 'closed' && (
-                    <span className="text-xs text-coffee-400 italic" title="Adding requests after close is an admin-only action">
-                      Adding to closed allocation
+                  {a.state === 'roasting_in_progress' && (
+                    <span className="text-xs text-coffee-400 italic">
+                      Admin late add
                     </span>
                   )}
                 </>
@@ -216,7 +242,6 @@ export default function AllocationDetail() {
             </div>
           </div>
 
-          {/* Inline request form */}
           {reqOpen && (
             <form onSubmit={addRequest} className="rounded-xl p-4 mb-4 space-y-3" style={{ background: '#FAF6F0', border: '1px solid #F2EAE0' }}>
               <div className="grid grid-cols-2 gap-3">
@@ -269,7 +294,6 @@ export default function AllocationDetail() {
             </form>
           )}
 
-          {/* Bag progress bar */}
           <div className="mb-4">
             <p className="text-xs text-coffee-400 mb-1.5">
               {confirmed_bags} bags confirmed of {projected_bags} projected
@@ -292,7 +316,7 @@ export default function AllocationDetail() {
                   <th className="text-left py-2 text-coffee-400 uppercase tracking-wide">Channel</th>
                   <th className="text-right py-2 text-coffee-400 uppercase tracking-wide">Bags</th>
                   <th className="text-left py-2 pl-3 text-coffee-400 uppercase tracking-wide">Status</th>
-                  {isAdmin && !isArchived && <th />}
+                  {isAdmin && !isClosed && <th />}
                 </tr>
               </thead>
               <tbody>
@@ -302,18 +326,14 @@ export default function AllocationDetail() {
                     <tr key={r.id} style={{ borderBottom: '1px solid #F2EAE0' }}>
                       <td className="py-2 text-coffee-700">{r.contact_name}</td>
                       <td className="py-2">
-                        <span
-                          className="text-xs px-1.5 py-0.5 rounded-full"
-                          style={{ background: '#F2EAE0', color: '#8B6A47' }}
-                        >
+                        <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: '#F2EAE0', color: '#8B6A47' }}>
                           {r.channel.replace('_', ' ')}
                         </span>
                       </td>
                       <td className="py-2 text-right">
-                        {isAdmin && !isArchived && editingReq?.id === r.id ? (
+                        {isAdmin && !isClosed && editingReq?.id === r.id ? (
                           <input
-                            type="number"
-                            min={1}
+                            type="number" min={1}
                             value={editingReq.quantity_bags}
                             onChange={e => setEditingReq(p => ({ ...p, quantity_bags: e.target.value }))}
                             className="w-16 h-7 px-2 text-sm text-right border border-coffee-400 rounded-lg"
@@ -331,52 +351,28 @@ export default function AllocationDetail() {
                           <p className="text-xs mt-0.5" style={{ color: '#A32D2D' }}>{rowErrors[r.id]}</p>
                         )}
                       </td>
-                      {isAdmin && !isArchived && (
+                      {isAdmin && !isClosed && (
                         <td className="py-2 text-right whitespace-nowrap">
                           <div className="flex items-center justify-end gap-3">
                             {editingReq?.id === r.id ? (
                               <>
-                                <button
-                                  onClick={() => saveReqEdit(r.id)}
-                                  disabled={editReqSaving}
-                                  className="text-xs disabled:opacity-40"
-                                  style={{ color: '#3B6D11' }}
-                                >
+                                <button onClick={() => saveReqEdit(r.id)} disabled={editReqSaving} className="text-xs disabled:opacity-40" style={{ color: '#3B6D11' }}>
                                   {editReqSaving ? '…' : 'Save'}
                                 </button>
-                                <button
-                                  onClick={() => setEditingReq(null)}
-                                  className="text-xs text-coffee-400"
-                                >
-                                  Cancel
-                                </button>
+                                <button onClick={() => setEditingReq(null)} className="text-xs text-coffee-400">Cancel</button>
                               </>
                             ) : (
                               <>
-                                <button
-                                  onClick={() => setEditingReq({ id: r.id, quantity_bags: r.quantity_bags })}
-                                  className="text-xs text-coffee-400 hover:text-coffee-700 transition-colors"
-                                  title="Edit bags"
-                                >
+                                <button onClick={() => setEditingReq({ id: r.id, quantity_bags: r.quantity_bags })} className="text-xs text-coffee-400 hover:text-coffee-700 transition-colors">
                                   Edit
                                 </button>
                                 {r.status === 'pending' && (
-                                  <button
-                                    onClick={() => updateReqStatus(r.id, 'confirmed')}
-                                    disabled={!!rowActioning[r.id]}
-                                    className="text-xs transition-colors disabled:opacity-40"
-                                    style={{ color: '#3B6D11' }}
-                                  >
+                                  <button onClick={() => updateReqStatus(r.id, 'confirmed')} disabled={!!rowActioning[r.id]} className="text-xs transition-colors disabled:opacity-40" style={{ color: '#3B6D11' }}>
                                     {rowActioning[r.id] ? '…' : 'Confirm'}
                                   </button>
                                 )}
                                 {r.status === 'confirmed' && (
-                                  <button
-                                    onClick={() => updateReqStatus(r.id, 'fulfilled')}
-                                    disabled={!!rowActioning[r.id]}
-                                    className="text-xs transition-colors disabled:opacity-40"
-                                    style={{ color: '#185FA5' }}
-                                  >
+                                  <button onClick={() => updateReqStatus(r.id, 'fulfilled')} disabled={!!rowActioning[r.id]} className="text-xs transition-colors disabled:opacity-40" style={{ color: '#185FA5' }}>
                                     {rowActioning[r.id] ? '…' : 'Fulfil'}
                                   </button>
                                 )}
@@ -418,26 +414,16 @@ export default function AllocationDetail() {
               </thead>
               <tbody>
                 {roast_sessions.map(s => (
-                  <tr
-                    key={s.batch_code}
-                    className="cursor-pointer"
-                    style={{ borderBottom: '1px solid #F2EAE0' }}
-                    onClick={() => navigate(`/roast/${s.id}`)}
-                  >
+                  <tr key={s.batch_code} className="cursor-pointer" style={{ borderBottom: '1px solid #F2EAE0' }} onClick={() => navigate(`/roast/${s.id}`)}>
                     <td className="py-2 font-mono text-coffee-800">{s.batch_code}</td>
                     <td className="py-2">
-                      <span
-                        className="text-xs px-1.5 py-0.5 rounded-full"
-                        style={{ background: '#F2EAE0', color: '#8B6A47' }}
-                      >
+                      <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: '#F2EAE0', color: '#8B6A47' }}>
                         {s.status.replace(/_/g, ' ')}
                       </span>
                     </td>
                     <td className="py-2 text-right text-coffee-700">{s.eject_temp_c || '—'}</td>
                     <td className="py-2 text-right text-coffee-700">{s.dtr ? `${s.dtr}%` : '—'}</td>
-                    <td className="py-2 text-center" style={{ color: s.variance_flagged ? '#BA7517' : 'transparent' }}>
-                      ⚠
-                    </td>
+                    <td className="py-2 text-center" style={{ color: s.variance_flagged ? '#BA7517' : 'transparent' }}>⚠</td>
                   </tr>
                 ))}
               </tbody>
@@ -451,9 +437,7 @@ export default function AllocationDetail() {
           {dispatch_date ? (
             <p className="text-sm text-coffee-700">
               Earliest: <span style={{ fontWeight: 500 }}>{dispatch_date}</span>
-              <span className="text-coffee-400 ml-1">
-                ({REST_DAYS_MAP[a.process] || 7} days rest for {a.process})
-              </span>
+              <span className="text-coffee-400 ml-1">({REST_DAYS_MAP[a.process] || 7} days rest for {a.process})</span>
             </p>
           ) : (
             <p className="text-sm text-coffee-300">Calculated once roast sessions are complete.</p>
@@ -461,7 +445,7 @@ export default function AllocationDetail() {
         </div>
 
         {/* Label link */}
-        {['resting', 'dispatched'].includes(a.state) && (
+        {a.state === 'allocation_closed' && (
           <div className="bg-white border border-coffee-200 rounded-xl p-5 flex items-center justify-between">
             <p className="text-sm text-coffee-700">Bag Label</p>
             <Link to={`/labels/${a.id}`}>
@@ -486,7 +470,7 @@ export default function AllocationDetail() {
                   <span className="text-coffee-700" style={{ fontWeight: 500 }}>
                     {entry.to_state.replace(/_/g, ' ')}
                   </span>
-                  {' · '}{entry.transitioned_by_name}
+                  {' · '}{entry.transitioned_by_name || 'system'}
                   {' · '}{fmtDate(entry.transitioned_at)}
                   {entry.notes && <span className="text-coffee-400"> · {entry.notes}</span>}
                 </li>
@@ -507,11 +491,7 @@ export default function AllocationDetail() {
                 const status = doc?.status || 'missing';
                 const meta   = JOURNAL_STATUS_MAP[status] || JOURNAL_STATUS_MAP.missing;
                 return (
-                  <div
-                    key={t}
-                    className="flex items-center justify-between py-2.5"
-                    style={{ borderBottom: '1px solid #F2EAE0' }}
-                  >
+                  <div key={t} className="flex items-center justify-between py-2.5" style={{ borderBottom: '1px solid #F2EAE0' }}>
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-coffee-700">{JOURNAL_DOC_LABELS[t]}</span>
                       <StatusBadge status={meta.status} label={meta.label} />
@@ -528,12 +508,7 @@ export default function AllocationDetail() {
               })}
               {JOURNAL_DOC_TYPES.every(t => !journalDocs?.[t]?.id) && (
                 <div className="mt-3">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={generateJournalDrafts}
-                    disabled={journalGenerating}
-                  >
+                  <Button variant="secondary" size="sm" onClick={generateJournalDrafts} disabled={journalGenerating}>
                     {journalGenerating ? 'Generating…' : 'Generate journal drafts'}
                   </Button>
                 </div>
@@ -545,12 +520,8 @@ export default function AllocationDetail() {
 
       {/* Transition modal */}
       {transitionModal && transitionChecks && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: 'rgba(34,21,8,0.2)' }}
-        >
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(34,21,8,0.2)' }}>
           <div className="bg-white rounded-2xl border border-coffee-200 w-full max-w-md p-6">
-            {/* Header */}
             <div className="mb-4">
               <p className="text-xs text-coffee-400 uppercase tracking-wide mb-1">State Transition</p>
               <h2 className="text-base text-coffee-900" style={{ fontWeight: 500 }}>
@@ -558,15 +529,14 @@ export default function AllocationDetail() {
               </h2>
             </div>
 
-            {/* Checks */}
             {transitionChecks.checks.length > 0 && (
               <ul className="space-y-3 mb-5">
                 {transitionChecks.checks.map((c, i) => {
-                  // Map failing checks to a direct fix link
                   const fixLink = !c.passed ? {
                     'Approved roast profile': { to: '/profiles', label: `Create a ${a.process} profile` },
                     'Confirmed requests':     null,
                     'Green stock reserved':   lot ? { to: `/inventory/${lot.id}`, label: 'Go to lot inventory' } : null,
+                    'Green stock available':  lot ? { to: `/inventory/${lot.id}`, label: 'Check lot inventory' } : null,
                     'All sessions approved for bagging': { to: '/roast', label: 'Go to Roast Sessions' },
                     'Bag count within yield': null,
                   }[c.label] : null;
@@ -575,43 +545,20 @@ export default function AllocationDetail() {
                     <li
                       key={i}
                       className="rounded-lg px-3 py-2.5 flex items-start gap-3"
-                      style={{
-                        background: c.passed ? '#F2FAF0' : '#FDF4F4',
-                        border: `1px solid ${c.passed ? '#C8E6C0' : '#F3C0C0'}`,
-                      }}
+                      style={{ background: c.passed ? '#F2FAF0' : '#FDF4F4', border: `1px solid ${c.passed ? '#C8E6C0' : '#F3C0C0'}` }}
                     >
-                      <span
-                        className="mt-0.5 text-xs"
-                        style={{
-                          color: c.passed ? '#3B6D11' : '#A32D2D',
-                          fontWeight: 600,
-                          flexShrink: 0,
-                        }}
-                      >
+                      <span className="mt-0.5 text-xs" style={{ color: c.passed ? '#3B6D11' : '#A32D2D', fontWeight: 600, flexShrink: 0 }}>
                         {c.passed ? '✓' : '✗'}
                       </span>
                       <div className="flex-1 min-w-0">
-                        <p
-                          className="text-sm"
-                          style={{
-                            color: c.passed ? '#3B6D11' : '#7A1A1A',
-                            fontWeight: 500,
-                          }}
-                        >
-                          {c.label}
-                        </p>
+                        <p className="text-sm" style={{ color: c.passed ? '#3B6D11' : '#7A1A1A', fontWeight: 500 }}>{c.label}</p>
                         {!c.passed && c.reason && (
-                          <p className="text-xs mt-0.5" style={{ color: '#A32D2D', lineHeight: 1.5 }}>
-                            {c.reason}
-                          </p>
+                          <p className="text-xs mt-0.5" style={{ color: '#A32D2D', lineHeight: 1.5 }}>{c.reason}</p>
                         )}
                         {fixLink && (
-                          <Link
-                            to={fixLink.to}
-                            onClick={() => setTransitionModal(false)}
+                          <Link to={fixLink.to} onClick={() => setTransitionModal(false)}
                             className="inline-flex items-center gap-1 text-xs mt-1.5 underline underline-offset-2 transition-opacity hover:opacity-70"
-                            style={{ color: '#A32D2D', fontWeight: 500 }}
-                          >
+                            style={{ color: '#A32D2D', fontWeight: 500 }}>
                             {fixLink.label} →
                           </Link>
                         )}
@@ -622,7 +569,6 @@ export default function AllocationDetail() {
               </ul>
             )}
 
-            {/* Notes field — only shown when all checks pass */}
             {allChecksPassed && (
               <textarea
                 value={transNotes}
@@ -633,9 +579,7 @@ export default function AllocationDetail() {
               />
             )}
 
-            {transError && (
-              <p className="text-xs mb-3" style={{ color: '#A32D2D' }}>{transError}</p>
-            )}
+            {transError && <p className="text-xs mb-3" style={{ color: '#A32D2D' }}>{transError}</p>}
 
             <div className="flex gap-3">
               <Button
@@ -646,9 +590,7 @@ export default function AllocationDetail() {
               >
                 {transSaving ? 'Moving…' : 'Confirm Transition'}
               </Button>
-              <Button variant="secondary" onClick={() => setTransitionModal(false)}>
-                Cancel
-              </Button>
+              <Button variant="secondary" onClick={() => setTransitionModal(false)}>Cancel</Button>
             </div>
 
             {!allChecksPassed && (
