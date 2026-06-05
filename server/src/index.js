@@ -178,6 +178,50 @@ app.get('/api/dashboard-stats', requireAuth, async (req, res) => {
   }
 });
 
+// Global search — searches lots, roast sessions, allocations, contacts
+app.get('/api/search', requireAuth, async (req, res) => {
+  const { q } = req.query;
+  if (!q || q.trim().length < 2) return res.json({ results: [] });
+  const tenant_id = req.user.tenant_id;
+  const term = `%${q.trim()}%`;
+  try {
+    const [{ rows: lots }, { rows: roasts }, { rows: allocs }, { rows: contacts }] = await Promise.all([
+      pool.query(
+        `SELECT id, lot_code AS label, estate AS sub, 'lot' AS type
+         FROM oec_lots WHERE tenant_id = $1 AND deleted_at IS NULL
+           AND (lot_code ILIKE $2 OR estate ILIKE $2)
+         LIMIT 5`,
+        [tenant_id, term]
+      ),
+      pool.query(
+        `SELECT id, batch_code AS label, status AS sub, 'roast' AS type
+         FROM oec_roast_sessions WHERE tenant_id = $1 AND deleted_at IS NULL
+           AND batch_code ILIKE $2
+         LIMIT 5`,
+        [tenant_id, term]
+      ),
+      pool.query(
+        `SELECT id, allocation_code AS label, state AS sub, 'allocation' AS type
+         FROM oec_allocations WHERE tenant_id = $1 AND deleted_at IS NULL
+           AND allocation_code ILIKE $2
+         LIMIT 5`,
+        [tenant_id, term]
+      ),
+      pool.query(
+        `SELECT id, name AS label, market_segment AS sub, 'contact' AS type
+         FROM oec_contacts WHERE tenant_id = $1 AND deleted_at IS NULL
+           AND name ILIKE $2
+         LIMIT 5`,
+        [tenant_id, term]
+      ),
+    ]);
+    return res.json({ results: [...lots, ...roasts, ...allocs, ...contacts] });
+  } catch (err) {
+    console.error('[search]', err.message);
+    return res.status(500).json({ error: 'Search failed.' });
+  }
+});
+
 // Flat endpoint for all allocation requests (used by contact-linking modal)
 app.get('/api/allocation-requests', requireAuth, async (req, res) => {
   try {

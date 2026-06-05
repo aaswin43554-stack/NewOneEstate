@@ -97,16 +97,28 @@ async function buildCuppingRecordDraft(allocation, tenant_id) {
   for (const s of samples) {
     lines.push(`Batch: ${s.batch_code}  |  Date: ${fmtDate(s.cupping_date)}  |  Days off roast: ${s.days_off_roast}`);
     lines.push(`Purpose: ${s.cupping_purpose}`);
-    lines.push(`Scores — Aroma: ${s.score_aroma}/10  Flavour: ${s.score_flavour}/10  Acidity: ${s.score_acidity}/10`);
-    lines.push(`         Body: ${s.score_body}/10  Sweetness: ${s.score_sweetness}/10  Aftertaste: ${s.score_aftertaste}/10  Overall: ${s.score_overall}/10`);
+    if (s.legacy_scoring) {
+      lines.push(`Scores (legacy) — Fragrance/Aroma: ${s.score_fragrance_aroma}  Flavor: ${s.score_flavor}  Acidity: ${s.score_acidity}`);
+      lines.push(`                  Body: ${s.score_body}  Sweetness: ${s.score_sweetness}  Aftertaste: ${s.score_aftertaste}  Overall: ${s.score_overall}`);
+    } else {
+      const scored = [s.score_fragrance_aroma, s.score_flavor, s.score_aftertaste, s.score_acidity, s.score_body, s.score_balance, s.score_overall].map(v => parseFloat(v) || 0);
+      const cups   = (s.score_uniformity || 0) + (s.score_clean_cup || 0) + (parseFloat(s.score_sweetness) || 0);
+      const defects = (s.defects_json || []).reduce((t, d) => t + (d.cups_affected || 0) * (d.intensity || 0) * (d.type === 'fault' ? 4 : 2), 0);
+      lines.push(`SCA Score: ${(scored.reduce((a, b) => a + b, 0) + cups - defects).toFixed(2)} / 100`);
+      lines.push(`Scored — Fragrance/Aroma: ${s.score_fragrance_aroma}  Flavor: ${s.score_flavor}  Aftertaste: ${s.score_aftertaste}`);
+      lines.push(`         Acidity: ${s.score_acidity} (${s.acidity_intensity || '—'})  Body: ${s.score_body} (${s.body_level || '—'})  Balance: ${s.score_balance}  Overall: ${s.score_overall}`);
+      lines.push(`Cup Checks — Uniformity: ${s.score_uniformity}/10  Clean Cup: ${s.score_clean_cup}/10  Sweetness: ${s.score_sweetness}/10`);
+      if (defects > 0) lines.push(`Defects: −${defects}`);
+    }
     const attrs = [
-      ['Aroma',      s.obs_aroma],
-      ['Flavour',    s.obs_flavour],
-      ['Acidity',    s.obs_acidity],
-      ['Body',       s.obs_body],
-      ['Sweetness',  s.obs_sweetness],
-      ['Aftertaste', s.obs_aftertaste],
-      ['Overall',    s.obs_overall],
+      ['Fragrance (dry)', s.obs_fragrance_dry],
+      ['Aroma (wet)',     s.obs_aroma_wet],
+      ['Flavor',         s.obs_flavor],
+      ['Acidity',        s.obs_acidity],
+      ['Body',           s.obs_body],
+      ['Balance',        s.obs_balance],
+      ['Aftertaste',     s.obs_aftertaste],
+      ['Overall',        s.obs_overall],
     ].filter(([, v]) => v && v.trim());
     if (attrs.length > 0) {
       lines.push('Observations:');

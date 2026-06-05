@@ -161,13 +161,16 @@ router.post('/journal-draft', async (req, res) => {
   );
 
   const { rows: cuppings } = await pool.query(
-    `SELECT cs.cupping_date, cs.cupping_purpose,
-            s.score_aroma, s.score_flavour, s.score_acidity, s.score_body,
-            s.score_sweetness, s.score_aftertaste, s.score_overall,
-            s.obs_aroma, s.obs_flavour, s.final_decision
+    `SELECT cs.cupping_date, cs.cupping_purpose, cs.legacy_scoring,
+            s.score_fragrance_aroma, s.score_flavor, s.score_acidity, s.score_body,
+            s.score_balance, s.score_aftertaste, s.score_overall,
+            s.score_uniformity, s.score_clean_cup, s.score_sweetness,
+            s.acidity_intensity, s.body_level, s.defects_json,
+            s.obs_fragrance_dry, s.obs_aroma_wet, s.obs_flavor, s.final_decision
      FROM oec_cupping_sessions cs
      JOIN oec_cupping_samples s ON s.cupping_session_id = cs.id
-     WHERE cs.allocation_id = $1
+     JOIN oec_roast_sessions rs ON rs.id = s.roast_session_id
+     WHERE rs.allocation_id = $1
      ORDER BY cs.cupping_date`,
     [allocation_id]
   );

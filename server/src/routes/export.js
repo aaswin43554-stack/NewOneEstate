@@ -72,12 +72,19 @@ const MODULES = {
   cupping: async (tenant_id) => {
     const { rows } = await pool.query(
       `SELECT cs.cupping_date, cs.days_off_roast, cs.cupping_purpose,
+              cs.number_of_cups, cs.legacy_scoring,
               rs.batch_code,
-              sm.score_aroma, sm.score_flavour, sm.score_acidity, sm.score_body,
-              sm.score_sweetness, sm.score_aftertaste, sm.score_overall,
-              sm.obs_aroma, sm.obs_flavour, sm.obs_acidity, sm.obs_body,
-              sm.obs_sweetness, sm.obs_aftertaste, sm.obs_overall,
-              sm.final_decision, cs.session_notes
+              sm.score_fragrance_aroma, sm.score_flavor, sm.score_aftertaste,
+              sm.score_acidity, sm.acidity_intensity,
+              sm.score_body, sm.body_level,
+              sm.score_balance, sm.score_overall,
+              sm.score_uniformity, sm.score_clean_cup, sm.score_sweetness,
+              sm.uniformity_cups, sm.clean_cup_cups, sm.sweetness_cups,
+              sm.defects_json,
+              sm.obs_fragrance_dry, sm.obs_aroma_wet, sm.obs_flavor,
+              sm.obs_aftertaste, sm.obs_acidity, sm.obs_body,
+              sm.obs_balance, sm.obs_overall,
+              sm.final_decision, sm.decision_notes, cs.session_notes
        FROM oec_cupping_samples sm
        JOIN oec_cupping_sessions cs ON cs.id = sm.cupping_session_id AND cs.deleted_at IS NULL
        JOIN oec_roast_sessions rs   ON rs.id = sm.roast_session_id

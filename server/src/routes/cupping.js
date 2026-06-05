@@ -41,6 +41,7 @@ router.get('/compare', async (req, res) => {
        JOIN oec_roast_sessions rs ON rs.id = sm.roast_session_id
        LEFT JOIN oec_allocations a ON a.id = rs.allocation_id
        WHERE cs.tenant_id = $1 AND cs.deleted_at IS NULL
+         AND cs.legacy_scoring = false
          AND (
            (rs.is_development = false AND a.process = $2)
            OR
