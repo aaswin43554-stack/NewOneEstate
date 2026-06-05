@@ -13,7 +13,10 @@
 --   dispatched, archived → allocation_closed
 -- ─────────────────────────────────────────────────────────────────────────────
 
--- Step 1: Loosen column types to text so we can remap values freely
+-- Step 1: Drop defaults that reference the enum (must happen before DROP TYPE)
+ALTER TABLE ops.oec_allocations ALTER COLUMN state DROP DEFAULT;
+
+-- Step 2: Loosen column types to text so we can remap values freely
 ALTER TABLE ops.oec_allocations
   ALTER COLUMN state TYPE text;
 
@@ -23,7 +26,7 @@ ALTER TABLE ops.oec_allocation_state_log
 ALTER TABLE ops.oec_allocation_state_log
   ALTER COLUMN to_state TYPE text;
 
--- Step 2: Remap obsolete state values
+-- Step 3: Remap obsolete state values
 UPDATE ops.oec_allocations
    SET state = CASE state
      WHEN 'closed'               THEN 'open_for_requests'
@@ -49,7 +52,7 @@ UPDATE ops.oec_allocation_state_log
                       ELSE to_state
                     END;
 
--- Step 3: Drop the old 7-value enum and recreate with 4 values
+-- Step 4: Drop the old 7-value enum and recreate with 4 values
 DROP TYPE IF EXISTS ops.allocation_state;
 
 CREATE TYPE ops.allocation_state AS ENUM (
@@ -59,11 +62,13 @@ CREATE TYPE ops.allocation_state AS ENUM (
   'allocation_closed'
 );
 
--- Step 4: Restore columns to the new enum type
+-- Step 5: Restore columns to the new enum type and re-add default
 ALTER TABLE ops.oec_allocations
   ALTER COLUMN state
     TYPE ops.allocation_state
-    USING state::ops.allocation_state,
+    USING state::ops.allocation_state;
+
+ALTER TABLE ops.oec_allocations
   ALTER COLUMN state SET DEFAULT 'upcoming';
 
 ALTER TABLE ops.oec_allocation_state_log
@@ -76,7 +81,7 @@ ALTER TABLE ops.oec_allocation_state_log
     TYPE ops.allocation_state
     USING to_state::ops.allocation_state;
 
--- Step 5: Add One Estate admin integration fields
+-- Step 6: Add One Estate admin integration fields
 -- source:      'manual' (created in OEC Ops) | 'one_estate' (synced from admin)
 -- external_id: ID from the One Estate admin system for upsert matching
 ALTER TABLE ops.oec_allocations

@@ -38,7 +38,14 @@
       "Bash(npx tsc *)",
       "Bash(dir C:\\\\Users\\\\aaswi\\\\OneDrive\\\\Desktop\\\\Work\\\\NewOneEstate\\\\client\\\\src\\\\pages *)",
       "Bash(npx vite *)",
-      "Bash(npm audit *)"
+      "Bash(npm audit *)",
+      "Bash(npm run *)",
+      "Read(//tmp/**)",
+      "Bash(netstat -ano)",
+      "Bash(taskkill //PID 15780 //F)",
+      "Bash(echo \"PID: $!\")",
+      "Bash(awk '{print $5}')",
+      "Bash(xargs -r taskkill //PID {} //F)"
     ]
   }
 }
