@@ -76,3 +76,11 @@
 [ME] Fetching profile for user 222b15a8-42d6-49ad-9139-096cdcd71fbe (admin@oneestate.com)
 [ME] OK — returned profile for user 222b15a8-42d6-49ad-9139-096cdcd71fbe (admin@oneestate.com)
 [HTTP] GET /api/auth/me -> 200 (72ms) [::1]
+[DB] Connection removed from pool (remaining: 7)
+[DB] Connection removed from pool (remaining: 1)
+[DB] Connection removed from pool (remaining: 1)
+[DB] Connection removed from pool (remaining: 1)
+[DB] Connection removed from pool (remaining: 1)
+[DB] Connection removed from pool (remaining: 1)
+[DB] Connection removed from pool (remaining: 1)
+[DB] Connection removed from pool (remaining: 0)
