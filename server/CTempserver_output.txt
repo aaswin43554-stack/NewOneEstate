@@ -1,0 +1,86 @@
+[server] SKYWALKER_PORT not set — hardware mock active
+[server] WebSocket hardware service ready at /ws/roast-live
+[server] ========== SERVER STARTED ==========
+[server] Port         : 3001
+[server] NODE_ENV     : development
+[server] DATABASE_URL : SET ✓
+[server] JWT_SECRET   : SET ✓
+[server] JWT_EXPIRES  : 15m
+[server] ========================================
+[server] Running migrations...
+[DB] New connection established (pool size: 1)
+[migrate] applying 001_extensions_and_enums.sql
+[migrate] FAILED (server will still start): type "user_role" already exists
+[server] Migrations complete
+[server] Running seed...
+[seed] Demo account password re-synced.
+[server] Seed complete
+[HEALTH] Health check requested
+[HTTP] GET /api/health -> 200 (10ms) [::1]
+[LOGIN] Attempt — email: test@test.com | DB URL set: true | JWT_SECRET set: true
+[LOGIN] Querying user record for: test@test.com
+[LOGIN][LOGIN_002] No user found for email: test@test.com
+[HTTP] POST /api/auth/login -> 401 (70ms) [::1]
+[AUTH][AUTH_001c] GET / — Bearer token is empty or malformed
+[HTTP] GET /api/lots -> 401 (2ms) [::1]
+[LOGIN] Attempt — email: admin@oneestate.com | DB URL set: true | JWT_SECRET set: true
+[LOGIN] Querying user record for: admin@oneestate.com
+[LOGIN] User found — id: 222b15a8-42d6-49ad-9139-096cdcd71fbe | role: admin | tenant: afba8bbc-f141-4a59-b993-109439725159 — comparing password
+[LOGIN] Password OK for user 222b15a8-42d6-49ad-9139-096cdcd71fbe — generating tokens
+[AUTH] Storing refresh token for user 222b15a8-42d6-49ad-9139-096cdcd71fbe | expires: 2026-06-10T14:10:54.549Z
+[AUTH] Refresh token stored OK for user 222b15a8-42d6-49ad-9139-096cdcd71fbe
+[LOGIN] SUCCESS — user 222b15a8-42d6-49ad-9139-096cdcd71fbe (admin@oneestate.com) logged in
+[AUTH] Signing access token for user 222b15a8-42d6-49ad-9139-096cdcd71fbe (admin@oneestate.com) | expires: 15m
+[HTTP] POST /api/auth/login -> 200 (804ms) [::1]
+[LOGIN] Attempt — email: admin@oneestate.com | DB URL set: true | JWT_SECRET set: true
+[LOGIN] Querying user record for: admin@oneestate.com
+[LOGIN] User found — id: 222b15a8-42d6-49ad-9139-096cdcd71fbe | role: admin | tenant: afba8bbc-f141-4a59-b993-109439725159 — comparing password
+[LOGIN] Password OK for user 222b15a8-42d6-49ad-9139-096cdcd71fbe — generating tokens
+[AUTH] Storing refresh token for user 222b15a8-42d6-49ad-9139-096cdcd71fbe | expires: 2026-06-10T14:10:58.924Z
+[AUTH] Refresh token stored OK for user 222b15a8-42d6-49ad-9139-096cdcd71fbe
+[LOGIN] SUCCESS — user 222b15a8-42d6-49ad-9139-096cdcd71fbe (admin@oneestate.com) logged in
+[AUTH] Signing access token for user 222b15a8-42d6-49ad-9139-096cdcd71fbe (admin@oneestate.com) | expires: 15m
+[HTTP] POST /api/auth/login -> 200 (774ms) [::1]
+[AUTH] OK — user 222b15a8-42d6-49ad-9139-096cdcd71fbe (admin@oneestate.com) role=admin -> GET /api/dashboard-stats
+[DASHBOARD] Fetching stats for tenant afba8bbc-f141-4a59-b993-109439725159
+[DB] New connection established (pool size: 8)
+(node:23500) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[DB] New connection established (pool size: 8)
+[DB] New connection established (pool size: 8)
+[DB] New connection established (pool size: 8)
+[DB] New connection established (pool size: 8)
+[DB] New connection established (pool size: 8)
+[DB] New connection established (pool size: 8)
+[DASHBOARD] OK — tenant afba8bbc-f141-4a59-b993-109439725159 | stock: 3167000g | allocs: 3 | contacts: 3 | roasts: 3
+[HTTP] GET /api/dashboard-stats -> 200 (602ms) [::1]
+[AUTH] OK — user 222b15a8-42d6-49ad-9139-096cdcd71fbe (admin@oneestate.com) role=admin -> GET /
+[HTTP] GET /api/lots -> 200 (73ms) [::1]
+[AUTH] OK — user 222b15a8-42d6-49ad-9139-096cdcd71fbe (admin@oneestate.com) role=admin -> GET /
+[HTTP] GET /api/allocations -> 200 (77ms) [::1]
+[AUTH] OK — user 222b15a8-42d6-49ad-9139-096cdcd71fbe (admin@oneestate.com) role=admin -> GET /
+[HTTP] GET /api/contacts -> 200 (74ms) [::1]
+[AUTH] OK — user 222b15a8-42d6-49ad-9139-096cdcd71fbe (admin@oneestate.com) role=admin -> GET /
+[HTTP] GET /api/roast-sessions -> 200 (72ms) [::1]
+[AUTH] OK — user 222b15a8-42d6-49ad-9139-096cdcd71fbe (admin@oneestate.com) role=admin -> GET /
+[HTTP] GET /api/cupping-sessions -> 200 (74ms) [::1]
+[AUTH] OK — user 222b15a8-42d6-49ad-9139-096cdcd71fbe (admin@oneestate.com) role=admin -> GET /
+[HTTP] GET /api/profiles -> 200 (73ms) [::1]
+[AUTH] OK — user 222b15a8-42d6-49ad-9139-096cdcd71fbe (admin@oneestate.com) role=admin -> GET /
+[HTTP] GET /api/journal -> 200 (139ms) [::1]
+[AUTH] OK — user 222b15a8-42d6-49ad-9139-096cdcd71fbe (admin@oneestate.com) role=admin -> GET /
+[HTTP] GET /api/labels -> 200 (70ms) [::1]
+[AUTH] OK — user 222b15a8-42d6-49ad-9139-096cdcd71fbe (admin@oneestate.com) role=admin -> GET /lots
+[HTTP] GET /api/export/lots -> 200 (72ms) [::1]
+[AUTH] OK — user 222b15a8-42d6-49ad-9139-096cdcd71fbe (admin@oneestate.com) role=admin -> GET /me
+[ME] Fetching profile for user 222b15a8-42d6-49ad-9139-096cdcd71fbe (admin@oneestate.com)
+[ME] OK — returned profile for user 222b15a8-42d6-49ad-9139-096cdcd71fbe (admin@oneestate.com)
+[HTTP] GET /api/auth/me -> 200 (72ms) [::1]
+[DB] Connection removed from pool (remaining: 7)
+[DB] Connection removed from pool (remaining: 1)
+[DB] Connection removed from pool (remaining: 1)
+[DB] Connection removed from pool (remaining: 1)
+[DB] Connection removed from pool (remaining: 1)
+[DB] Connection removed from pool (remaining: 1)
+[DB] Connection removed from pool (remaining: 1)
+[DB] Connection removed from pool (remaining: 0)
