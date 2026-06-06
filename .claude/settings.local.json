@@ -45,7 +45,13 @@
       "Bash(taskkill //PID 15780 //F)",
       "Bash(echo \"PID: $!\")",
       "Bash(awk '{print $5}')",
-      "Bash(xargs -r taskkill //PID {} //F)"
+      "Bash(xargs -r taskkill //PID {} //F)",
+      "Read(//c/Users/aaswi/OneDrive/Desktop/Work/**)",
+      "Read(//c/Users/aaswi/OneDrive/Desktop/**)",
+      "Bash(xargs grep -l \"allocation/\\\\|ALTITUDE\\\\|Roast Days\\\\|Dispatch\")",
+      "Bash(xargs grep -l \"allocation/\\\\|allocation/:code\\\\|/allocation\")",
+      "Bash(xargs grep -l \"ALTITUDE\\\\|Roast Days\\\\|dispatch_info\\\\|Join Release\\\\|allocation/W\")",
+      "Bash(xargs grep -l \"Return Home\\\\|return.*home\\\\|ReturnHome\")"
     ]
   }
 }

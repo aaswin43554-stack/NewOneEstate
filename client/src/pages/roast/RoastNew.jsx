@@ -11,14 +11,17 @@ export default function RoastNew() {
   const [params] = useSearchParams();
   const preselectedAlloc = params.get('allocation_id');
 
-  const [mode,       setMode]       = useState('production');
-  const [allocations,setAllocs]     = useState([]);
-  const [allocId,    setAllocId]    = useState(preselectedAlloc || '');
-  const [process,    setProcess]    = useState('Washed');
-  const [chargeTemp, setChargeTemp] = useState('');
-  const [greenKg,    setGreenKg]    = useState('');
-  const [loading,    setLoading]    = useState(false);
-  const [error,      setError]      = useState('');
+  const [mode,            setMode]       = useState('production');
+  const [allocations,     setAllocs]     = useState([]);
+  const [allocId,         setAllocId]    = useState(preselectedAlloc || '');
+  const [process,         setProcess]    = useState('Washed');
+  const [estate,          setEstate]     = useState('');
+  const [processDesc,     setProcessDesc]= useState('');
+  const [moisture,        setMoisture]   = useState('');
+  const [chargeTemp,      setChargeTemp] = useState('');
+  const [greenKg,         setGreenKg]    = useState('');
+  const [loading,         setLoading]    = useState(false);
+  const [error,           setError]      = useState('');
 
   useEffect(() => {
     api.get('/allocations?state=roasting_in_progress')
@@ -43,7 +46,15 @@ export default function RoastNew() {
         is_development: mode === 'development',
         charge_temp_c: parseInt(chargeTemp),
         green_weight_in_g: greenG,
-        ...(mode === 'production' ? { allocation_id: allocId } : { process }),
+        ...(mode === 'production'
+          ? { allocation_id: allocId }
+          : {
+              process,
+              ...(estate      ? { estate }                           : {}),
+              ...(processDesc ? { process_description: processDesc } : {}),
+              ...(moisture    ? { moisture_pct: parseFloat(moisture) } : {}),
+            }
+        ),
       };
       const res = await api.post('/roast-sessions', body);
       if (!res.ok) {
@@ -102,13 +113,37 @@ export default function RoastNew() {
               ))}
             </FormSelect>
           ) : (
-            <FormSelect
-              label="Process"
-              value={process}
-              onChange={e => setProcess(e.target.value)}
-            >
-              {PROCESSES.map(p => <option key={p}>{p}</option>)}
-            </FormSelect>
+            <>
+              <FormSelect
+                label="Process"
+                value={process}
+                onChange={e => setProcess(e.target.value)}
+              >
+                {PROCESSES.map(p => <option key={p}>{p}</option>)}
+              </FormSelect>
+              <FormInput
+                label="Estate (optional)"
+                type="text"
+                value={estate}
+                onChange={e => setEstate(e.target.value)}
+                placeholder="e.g. Suan Saket"
+              />
+              <FormInput
+                label="Process Description (optional)"
+                type="text"
+                value={processDesc}
+                onChange={e => setProcessDesc(e.target.value)}
+                placeholder="e.g. Fully washed, raised bed dried"
+              />
+              <FormInput
+                label="Moisture % (optional)"
+                type="number"
+                step="0.1"
+                value={moisture}
+                onChange={e => setMoisture(e.target.value)}
+                placeholder="e.g. 11.5"
+              />
+            </>
           )}
 
           <div>

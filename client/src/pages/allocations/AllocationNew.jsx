@@ -5,9 +5,8 @@ import { api } from '../../lib/api';
 import { Button, FormInput, FormSelect, PageHeader } from '../../components/ui';
 
 const PROCESSES  = ['Washed', 'Honey', 'Natural', 'Anaerobic'];
-const ROAST_LOSS = { Washed: 0.17, Honey: 0.16, Natural: 0.18, Anaerobic: 0.18 };
-const CURRENCIES = ['THB', 'USD', 'SGD', 'MYR', 'LAK'];
-const MARKETS    = ['Laos', 'Thailand', 'Malaysia', 'Singapore', 'Other'];
+const CURRENCIES = ['LAK', 'THB', 'USD'];
+const MARKETS    = ['Laos', 'Thailand', 'Other: International'];
 
 function addDays(dateStr, days) {
   const d = new Date(dateStr);
@@ -15,10 +14,9 @@ function addDays(dateStr, days) {
   return d.toISOString().split('T')[0];
 }
 
-function projectedBags(greenG, bagG, process) {
-  if (!greenG || !bagG || !process) return 0;
-  const usable  = greenG - 700;
-  const roasted = usable * (1 - (ROAST_LOSS[process] || 0.17));
+function projectedBags(greenG, bagG) {
+  if (!greenG || !bagG) return 0;
+  const roasted = greenG * 0.80;
   return Math.max(0, Math.floor(roasted / bagG));
 }
 
@@ -30,7 +28,7 @@ export default function AllocationNew() {
   const [process,   setProcess]   = useState('');
   const [year,      setYear]      = useState('');
   const [greenKg,   setGreenKg]   = useState('');
-  const [bagG,      setBagG]      = useState('250');
+  const [bagG,      setBagG]      = useState('200');
   const [openDate,  setOpenDate]  = useState(new Date().toISOString().split('T')[0]);
   const [closeDate, setCloseDate] = useState(addDays(new Date().toISOString().split('T')[0], 5));
   const [pricing,   setPricing]   = useState([{ market: 'Laos', amount: '', currency: 'THB' }]);
@@ -55,9 +53,8 @@ export default function AllocationNew() {
     if (lot) { setEstate(lot.estate); setProcess(lot.process); setYear(String(lot.harvest_year)); }
   }
 
-  const greenG   = greenKg ? Math.round(parseFloat(greenKg) * 1000) : null;
-  const bags     = projectedBags(greenG, parseInt(bagG), process);
-  const lossLabel = process ? `${Math.round(ROAST_LOSS[process] * 100)}%` : '—';
+  const greenG = greenKg ? Math.round(parseFloat(greenKg) * 1000) : null;
+  const bags   = projectedBags(greenG, parseInt(bagG));
 
   function addPricingRow() {
     setPricing(p => [...p, { market: 'Laos', amount: '', currency: 'THB' }]);
@@ -211,7 +208,7 @@ export default function AllocationNew() {
           </div>
 
           {/* Yield projection */}
-          {greenG && process && (
+          {greenG && (
             <div
               className="rounded-xl p-4 border border-coffee-200"
               style={{ background: '#FAF6F0' }}
@@ -221,7 +218,7 @@ export default function AllocationNew() {
                 {bags} <span className="text-sm text-coffee-400" style={{ fontWeight: 400 }}>bags</span>
               </p>
               <p className="text-xs text-coffee-400 mt-1">
-                Based on {lossLabel} roast loss + 700g buffer
+                Based on 20% roast loss
               </p>
             </div>
           )}
