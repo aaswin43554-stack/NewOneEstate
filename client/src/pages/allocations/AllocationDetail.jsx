@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { Pencil, Trash2 } from 'lucide-react';
 import Layout from '../../components/Layout';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
@@ -75,6 +76,19 @@ export default function AllocationDetail() {
   const [rowActioning,  setRowActioning]  = useState({});
   const [editingReq,    setEditingReq]    = useState(null);
   const [editReqSaving, setEditReqSaving] = useState(false);
+
+  // Allocation edit modal
+  const [editOpen,   setEditOpen]   = useState(false);
+  const [editFields, setEditFields] = useState({});
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError,  setEditError]  = useState('');
+
+  // Allocation delete
+  const [deleteOpen,   setDeleteOpen]   = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState('');
+  const [deleting,     setDeleting]     = useState(false);
+  const [deleteError,  setDeleteError]  = useState('');
+
   const [journalDocs,       setJournalDocs]       = useState(null);
   const [journalLoading,    setJournalLoading]    = useState(false);
   const [journalGenerating, setJournalGenerating] = useState(false);
@@ -159,6 +173,46 @@ export default function AllocationDetail() {
     setEditReqSaving(false);
   }
 
+  function openEdit() {
+    const a = data?.allocation;
+    if (!a) return;
+    setEditFields({
+      estate:                    a.estate || '',
+      planned_green_quantity_g:  a.planned_green_quantity_g ? (a.planned_green_quantity_g / 1000).toFixed(2) : '',
+      planned_bag_size_g:        a.planned_bag_size_g || '',
+      window_open_date:          a.window_open_date  ? a.window_open_date.split('T')[0] : '',
+      window_close_date:         a.window_close_date ? a.window_close_date.split('T')[0] : '',
+    });
+    setEditError('');
+    setEditOpen(true);
+  }
+
+  async function saveEdit(e) {
+    e.preventDefault();
+    setEditSaving(true); setEditError('');
+    const body = {
+      estate:                    editFields.estate || undefined,
+      planned_green_quantity_g:  editFields.planned_green_quantity_g
+        ? Math.round(parseFloat(editFields.planned_green_quantity_g) * 1000) : undefined,
+      planned_bag_size_g:        editFields.planned_bag_size_g ? parseInt(editFields.planned_bag_size_g) : undefined,
+      window_open_date:          editFields.window_open_date  || undefined,
+      window_close_date:         editFields.window_close_date || undefined,
+    };
+    const res = await api.put(`/allocations/${id}`, body);
+    const d   = await res.json();
+    if (res.ok) { setEditOpen(false); load(); }
+    else { setEditError(d.error || 'Failed to update.'); }
+    setEditSaving(false);
+  }
+
+  async function confirmDelete() {
+    setDeleting(true); setDeleteError('');
+    const res = await api.delete(`/allocations/${id}`);
+    const d   = await res.json();
+    if (res.ok) { navigate('/allocations'); }
+    else { setDeleteError(d.error || 'Failed to delete.'); setDeleting(false); }
+  }
+
   if (loading) return <Layout><div className="px-6 py-6 text-sm text-coffee-400">Loading…</div></Layout>;
   if (!data)   return <Layout><div className="px-6 py-6 text-sm" style={{ color: '#A32D2D' }}>Allocation not found.</div></Layout>;
 
@@ -193,6 +247,26 @@ export default function AllocationDetail() {
             >
               Synced from One Estate
             </span>
+          )}
+          {isAdmin && !isClosed && (
+            <div className="ml-auto flex gap-2">
+              <button
+                onClick={openEdit}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors"
+                style={{ borderColor: '#E0D0BC', color: '#8B6A47' }}
+              >
+                <Pencil size={12} /> Edit
+              </button>
+              {user?.role === 'admin' && (
+                <button
+                  onClick={() => { setDeleteConfirm(''); setDeleteError(''); setDeleteOpen(true); }}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors"
+                  style={{ borderColor: '#F3C0C0', color: '#A32D2D' }}
+                >
+                  <Trash2 size={12} /> Delete
+                </button>
+              )}
+            </div>
           )}
         </div>
 
@@ -517,6 +591,105 @@ export default function AllocationDetail() {
           )}
         </div>
       </div>
+
+      {/* Edit allocation modal */}
+      {editOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(34,21,8,0.2)' }}>
+          <div className="bg-white rounded-2xl border border-coffee-200 w-full max-w-md p-6">
+            <h2 className="text-base text-coffee-900 mb-5" style={{ fontWeight: 500 }}>Edit Allocation</h2>
+            <form onSubmit={saveEdit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-coffee-500 uppercase tracking-wide mb-1.5">Estate</label>
+                <input
+                  value={editFields.estate}
+                  onChange={e => setEditFields(p => ({ ...p, estate: e.target.value }))}
+                  className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-coffee-500 uppercase tracking-wide mb-1.5">Green Qty (kg)</label>
+                  <input
+                    type="number" step="0.01"
+                    value={editFields.planned_green_quantity_g}
+                    onChange={e => setEditFields(p => ({ ...p, planned_green_quantity_g: e.target.value }))}
+                    className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-coffee-500 uppercase tracking-wide mb-1.5">Bag Size (g)</label>
+                  <input
+                    type="number"
+                    value={editFields.planned_bag_size_g}
+                    onChange={e => setEditFields(p => ({ ...p, planned_bag_size_g: e.target.value }))}
+                    className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-coffee-500 uppercase tracking-wide mb-1.5">Window Opens</label>
+                  <input
+                    type="date"
+                    value={editFields.window_open_date}
+                    onChange={e => setEditFields(p => ({ ...p, window_open_date: e.target.value }))}
+                    className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-coffee-500 uppercase tracking-wide mb-1.5">Window Closes</label>
+                  <input
+                    type="date"
+                    value={editFields.window_close_date}
+                    onChange={e => setEditFields(p => ({ ...p, window_close_date: e.target.value }))}
+                    className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg"
+                  />
+                </div>
+              </div>
+              {editError && <p className="text-xs" style={{ color: '#A32D2D' }}>{editError}</p>}
+              <div className="flex gap-3 pt-2">
+                <Button type="submit" disabled={editSaving} className="flex-1 justify-center" style={{ background: '#3B6D11', color: '#fff' }}>
+                  {editSaving ? 'Saving…' : 'Save Changes'}
+                </Button>
+                <Button type="button" variant="secondary" onClick={() => setEditOpen(false)}>Cancel</Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete allocation modal */}
+      {deleteOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(34,21,8,0.2)' }}>
+          <div className="bg-white rounded-2xl border border-coffee-200 w-full max-w-sm p-6">
+            <h2 className="text-base text-coffee-900 mb-2" style={{ fontWeight: 500 }}>Delete Allocation</h2>
+            <p className="text-sm text-coffee-600 mb-4">
+              This will permanently delete <strong>{data?.allocation?.allocation_code}</strong> and all its requests. This cannot be undone.
+            </p>
+            <p className="text-xs text-coffee-500 mb-2">
+              Type <strong>{data?.allocation?.allocation_code}</strong> to confirm:
+            </p>
+            <input
+              value={deleteConfirm}
+              onChange={e => setDeleteConfirm(e.target.value)}
+              placeholder={data?.allocation?.allocation_code}
+              className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg mb-4 font-mono"
+            />
+            {deleteError && <p className="text-xs mb-3" style={{ color: '#A32D2D' }}>{deleteError}</p>}
+            <div className="flex gap-3">
+              <Button
+                onClick={confirmDelete}
+                disabled={deleteConfirm !== data?.allocation?.allocation_code || deleting}
+                className="flex-1 justify-center"
+                variant="destructive"
+              >
+                {deleting ? 'Deleting…' : 'Delete'}
+              </Button>
+              <Button variant="secondary" onClick={() => setDeleteOpen(false)}>Cancel</Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Transition modal */}
       {transitionModal && transitionChecks && (

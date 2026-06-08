@@ -284,6 +284,111 @@ router.post('/:id/notes', async (req, res) => {
   }
 });
 
+// PATCH /api/roast-sessions/:id/rename
+router.patch('/:id/rename', requireRole('admin', 'roaster'), async (req, res) => {
+  const { id } = req.params;
+  const tenant_id = req.user.tenant_id;
+  const { batch_code } = req.body;
+  if (!batch_code || !batch_code.trim()) {
+    return res.status(400).json({ error: 'batch_code is required.' });
+  }
+  const { rows: [session] } = await pool.query(
+    'SELECT id FROM oec_roast_sessions WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
+    [id, tenant_id]
+  );
+  if (!session) return res.status(404).json({ error: 'Session not found.' });
+  try {
+    const { rows: [updated] } = await pool.query(
+      `UPDATE oec_roast_sessions SET batch_code = $1, updated_at = NOW(), updated_by = $2 WHERE id = $3 RETURNING *`,
+      [batch_code.trim(), req.user.id, id]
+    );
+    return res.json({ session: updated });
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'That batch code is already in use.' });
+    console.error('Rename session:', err);
+    return res.status(500).json({ error: 'Failed to rename session.' });
+  }
+});
+
+// PATCH /api/roast-sessions/:id/data  — update curve data fields (edit completed/in_progress sessions)
+router.patch('/:id/data', requireRole('admin', 'roaster'), async (req, res) => {
+  const { id } = req.params;
+  const tenant_id = req.user.tenant_id;
+  const {
+    estate, process_description, moisture_pct,
+    charge_temp_c, tp_temp_c, tp_time_seconds,
+    yellow_temp_c, yellow_time_seconds,
+    first_crack_temp_c, first_crack_time_seconds, ror_first_crack,
+    eject_temp_c, total_time_seconds, ror_eject,
+    development_time_seconds, temperature_curve, decision_notes,
+    roasted_weight_out_g,
+  } = req.body;
+
+  const { rows: [session] } = await pool.query(
+    'SELECT * FROM oec_roast_sessions WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
+    [id, tenant_id]
+  );
+  if (!session) return res.status(404).json({ error: 'Session not found.' });
+
+  const devTime = development_time_seconds != null ? parseInt(development_time_seconds) : session.development_time_seconds;
+  const totalTime = total_time_seconds != null ? parseInt(total_time_seconds) : session.total_time_seconds;
+  const dtr = (devTime && totalTime) ? Math.round((devTime / totalTime) * 10000) / 100 : session.dtr;
+
+  try {
+    const { rows: [updated] } = await pool.query(
+      `UPDATE oec_roast_sessions SET
+         estate                   = COALESCE($1,  estate),
+         process_description      = COALESCE($2,  process_description),
+         moisture_pct             = COALESCE($3,  moisture_pct),
+         charge_temp_c            = COALESCE($4,  charge_temp_c),
+         tp_temp_c                = COALESCE($5,  tp_temp_c),
+         tp_time_seconds          = COALESCE($6,  tp_time_seconds),
+         yellow_temp_c            = COALESCE($7,  yellow_temp_c),
+         yellow_time_seconds      = COALESCE($8,  yellow_time_seconds),
+         first_crack_temp_c       = COALESCE($9,  first_crack_temp_c),
+         first_crack_time_seconds = COALESCE($10, first_crack_time_seconds),
+         ror_first_crack          = COALESCE($11, ror_first_crack),
+         eject_temp_c             = COALESCE($12, eject_temp_c),
+         total_time_seconds       = COALESCE($13, total_time_seconds),
+         ror_eject                = COALESCE($14, ror_eject),
+         development_time_seconds = COALESCE($15, development_time_seconds),
+         temperature_curve        = COALESCE($16, temperature_curve),
+         decision_notes           = COALESCE($17, decision_notes),
+         roasted_weight_out_g     = COALESCE($18, roasted_weight_out_g),
+         dtr                      = $19,
+         updated_at = NOW(), updated_by = $20
+       WHERE id = $21 RETURNING *`,
+      [
+        estate             != null ? estate             : null,
+        process_description != null ? process_description : null,
+        moisture_pct       != null ? parseFloat(moisture_pct)       : null,
+        charge_temp_c      != null ? parseFloat(charge_temp_c)      : null,
+        tp_temp_c          != null ? parseFloat(tp_temp_c)          : null,
+        tp_time_seconds    != null ? parseInt(tp_time_seconds)      : null,
+        yellow_temp_c      != null ? parseFloat(yellow_temp_c)      : null,
+        yellow_time_seconds != null ? parseInt(yellow_time_seconds) : null,
+        first_crack_temp_c  != null ? parseFloat(first_crack_temp_c) : null,
+        first_crack_time_seconds != null ? parseInt(first_crack_time_seconds) : null,
+        ror_first_crack    != null ? parseFloat(ror_first_crack)    : null,
+        eject_temp_c       != null ? parseFloat(eject_temp_c)       : null,
+        total_time_seconds != null ? parseInt(total_time_seconds)   : null,
+        ror_eject          != null ? ror_eject                      : null,
+        development_time_seconds != null ? parseInt(development_time_seconds) : null,
+        temperature_curve  != null ? JSON.stringify(temperature_curve) : null,
+        decision_notes     != null ? decision_notes                 : null,
+        roasted_weight_out_g != null ? parseInt(roasted_weight_out_g) : null,
+        dtr,
+        req.user.id,
+        id,
+      ]
+    );
+    return res.json({ session: updated });
+  } catch (err) {
+    console.error('Patch session data:', err);
+    return res.status(500).json({ error: 'Failed to update session data.' });
+  }
+});
+
 // GET /api/roast-sessions
 router.get('/', async (req, res) => {
   const tenant_id = req.user.tenant_id;

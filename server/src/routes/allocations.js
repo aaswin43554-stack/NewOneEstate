@@ -421,6 +421,26 @@ router.put('/:id/requests/:req_id', requireRole('admin', 'roaster'), async (req,
   }
 });
 
+// DELETE /api/allocations/:id  (soft delete, admin only)
+router.delete('/:id', requireRole('admin'), async (req, res) => {
+  const tenant_id = req.user.tenant_id;
+  const alloc = await fetchAllocation(req.params.id, tenant_id);
+  if (!alloc) return res.status(404).json({ error: 'Allocation not found.' });
+  if (alloc.state === 'allocation_closed') {
+    return res.status(400).json({ error: 'Closed allocations cannot be deleted.' });
+  }
+  try {
+    await pool.query(
+      'UPDATE oec_allocations SET deleted_at = NOW(), updated_at = NOW(), updated_by = $1 WHERE id = $2',
+      [req.user.id, alloc.id]
+    );
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('Delete allocation:', err);
+    return res.status(500).json({ error: 'Failed to delete allocation.' });
+  }
+});
+
 // GET /api/allocations
 router.get('/', async (req, res) => {
   const tenant_id = req.user.tenant_id;

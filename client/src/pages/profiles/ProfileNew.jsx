@@ -60,15 +60,13 @@ export default function ProfileNew() {
   const [error,  setError]  = useState('');
   const [saving, setSaving] = useState(false);
 
-  // Load completed dev sessions for session picker
+  // Load dev sessions for session picker (all non-in_progress so user sees full history)
   useEffect(() => {
     setSessionsLoading(true);
     api.get('/roast-sessions?is_development=true')
       .then(r => r.json())
       .then(d => {
-        const eligible = (d.sessions || []).filter(s =>
-          ['completed', 'approved_for_bagging'].includes(s.status)
-        );
+        const eligible = (d.sessions || []).filter(s => s.status !== 'in_progress');
         setSessions(eligible);
       })
       .finally(() => setSessionsLoading(false));
@@ -202,15 +200,22 @@ export default function ProfileNew() {
                   style={{ borderColor: '#E0D0BC', color: '#533A24' }}
                 >
                   <option value="">Choose a session…</option>
-                  {sessions.map(sess => (
-                    <option key={sess.id} value={sess.id}>
-                      {sess.batch_code}
-                      {sess.estate ? ` · ${sess.estate}` : ''}
-                      {sess.process_description ? ` · ${sess.process_description}` : ''}
-                      {' · '}{fmtDate(sess.started_at)}
-                      {sess.dtr ? ` · DTR ${sess.dtr}%` : ''}
-                    </option>
-                  ))}
+                  {sessions.map(sess => {
+                    const statusLabel = {
+                      completed: 'Completed',
+                      approved_for_bagging: 'Approved',
+                      rejected: 'Rejected',
+                    }[sess.status] || sess.status;
+                    return (
+                      <option key={sess.id} value={sess.id}>
+                        {sess.batch_code}
+                        {sess.estate ? ` · ${sess.estate}` : ''}
+                        {' · '}{fmtDate(sess.started_at)}
+                        {sess.dtr ? ` · DTR ${sess.dtr}%` : ''}
+                        {' · '}{statusLabel}
+                      </option>
+                    );
+                  })}
                 </select>
               )}
             </div>
