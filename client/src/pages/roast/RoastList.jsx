@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Trash2 } from 'lucide-react';
 import Layout from '../../components/Layout';
 import { api } from '../../lib/api';
+import { useAuth } from '../../lib/auth';
 import { PageHeader, Button, DataTable, FilterPills } from '../../components/ui';
 
 const TZ = 'Asia/Vientiane';
@@ -182,14 +184,30 @@ export default function RoastList() {
   const [sessions, setSessions] = useState([]);
   const [loading,  setLoading]  = useState(true);
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
 
-  useEffect(() => {
+  function loadSessions() {
     setLoading(true);
     api.get(`/roast-sessions?is_development=${mode === 'development'}`)
       .then(r => r.json())
       .then(d => setSessions(d.sessions || []))
       .finally(() => setLoading(false));
-  }, [mode]);
+  }
+
+  useEffect(() => { loadSessions(); }, [mode]);
+
+  async function handleDelete(e, session) {
+    e.stopPropagation();
+    if (!window.confirm(`Delete session ${session.batch_code}? This cannot be undone.`)) return;
+    const res = await api.delete(`/roast-sessions/${session.id}`);
+    if (res.ok) {
+      setSessions(prev => prev.filter(s => s.id !== session.id));
+    } else {
+      const d = await res.json();
+      alert(d.error || 'Failed to delete.');
+    }
+  }
 
   return (
     <Layout>
@@ -213,7 +231,25 @@ export default function RoastList() {
         </div>
 
         <DataTable
-          columns={mode === 'development' ? DEV_COLUMNS : PROD_COLUMNS}
+          columns={[
+            ...(mode === 'development' ? DEV_COLUMNS : PROD_COLUMNS),
+            ...(isAdmin ? [{
+              key: '_delete',
+              label: '',
+              render: (_, row) => (
+                <button
+                  onClick={e => handleDelete(e, row)}
+                  className="p-1.5 rounded-lg transition-colors hover:bg-red-50"
+                  style={{ color: '#C9B49A' }}
+                  title="Delete session"
+                  onMouseEnter={e => e.currentTarget.style.color = '#A32D2D'}
+                  onMouseLeave={e => e.currentTarget.style.color = '#C9B49A'}
+                >
+                  <Trash2 size={14} />
+                </button>
+              ),
+            }] : []),
+          ]}
           rows={sessions}
           loading={loading}
           onRowClick={s => navigate(`/roast/${s.id}`)}

@@ -123,6 +123,7 @@ export default function RoastDetail() {
   const [loading,       setLoading]       = useState(true);
   const [confirming,    setConfirming]    = useState(null);
   const [saving,        setSaving]        = useState(false);
+  const [deleting,      setDeleting]      = useState(false);
   const [anomalyData,   setAnomalyData]   = useState(null);
   const [anomalyLoading, setAnomalyLoading] = useState(false);
   const [anomalyError,  setAnomalyError]  = useState('');
@@ -196,6 +197,19 @@ export default function RoastDetail() {
     if (res.ok) { setSession(d.session); setConfirming(null); }
     else { alert(d.error || 'Failed to update status.'); }
     setSaving(false);
+  }
+
+  async function handleDelete() {
+    setDeleting(true);
+    try {
+      const res = await api.delete(`/roast-sessions/${id}`);
+      if (!res.ok) { const d = await res.json(); alert(d.error || 'Failed to delete.'); return; }
+      navigate('/roast');
+    } catch {
+      alert('Network error.');
+    } finally {
+      setDeleting(false);
+    }
   }
 
   async function analyzeAnomalies() {
@@ -426,7 +440,7 @@ export default function RoastDetail() {
     <Layout>
       <div className="max-w-3xl mx-auto px-6 py-6 space-y-5">
         {/* Header with inline-editable title */}
-        <div className="flex items-start gap-3 flex-wrap">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
           {editingTitle ? (
             <div className="flex items-center gap-2 flex-1 min-w-0">
               <input
@@ -470,6 +484,17 @@ export default function RoastDetail() {
               {session.is_development ? 'DEV' : 'PROD'}
             </span>
             <StatusBadge {...badgeMeta} />
+            {user?.role === 'admin' && (
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={deleting}
+                onClick={() => { if (window.confirm(`Delete session ${session.batch_code}? This cannot be undone.`)) handleDelete(); }}
+                style={{ color: '#A32D2D', borderColor: '#F5C6C6' }}
+              >
+                {deleting ? 'Deleting…' : 'Delete Session'}
+              </Button>
+            )}
           </div>
         </div>
         {titleError && <p className="text-xs" style={{ color: '#A32D2D' }}>{titleError}</p>}
