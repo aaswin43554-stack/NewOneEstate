@@ -442,6 +442,25 @@ router.get('/', async (req, res) => {
   }
 });
 
+// DELETE /api/roast-sessions/:id
+router.delete('/:id', requireRole('admin'), async (req, res) => {
+  const { id } = req.params;
+  const tenant_id = req.user.tenant_id;
+
+  try {
+    const { rows: [session] } = await pool.query(
+      `UPDATE oec_roast_sessions SET deleted_at = NOW(), updated_by = $1
+       WHERE id = $2 AND tenant_id = $3 AND deleted_at IS NULL RETURNING id`,
+      [req.user.id, id, tenant_id]
+    );
+    if (!session) return res.status(404).json({ error: 'Session not found.' });
+    return res.json({ message: 'Session deleted.' });
+  } catch (err) {
+    console.error('Delete session:', err);
+    return res.status(500).json({ error: 'Failed to delete session.' });
+  }
+});
+
 // GET /api/roast-sessions/:id
 router.get('/:id', async (req, res) => {
   const { id } = req.params;
