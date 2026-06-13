@@ -14,81 +14,29 @@ const PROCESS_LABEL = {
 
 function LabelCard({ label, form }) {
   const d = { ...label, ...form };
+
+  if (d.label_image) {
+    return (
+      <div
+        className="label-card rounded-2xl overflow-hidden shadow-sm"
+        style={{ border: '1px solid #C8A87A', maxWidth: 380, width: '100%' }}
+      >
+        <img
+          src={d.label_image}
+          alt="Label"
+          style={{ width: '100%', display: 'block' }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div
       className="label-card rounded-2xl overflow-hidden shadow-sm"
       style={{ border: '1px solid #C8A87A', background: '#FDFAF6', maxWidth: 380, width: '100%' }}
     >
-      {/* Header */}
-      <div
-        className="text-center py-3"
-        style={{ background: '#2A1A0C' }}
-      >
-        <p style={{ fontSize: 16, letterSpacing: '0.2em', fontWeight: 700, color: '#FAF6F0', fontFamily: 'Georgia, serif' }}>
-          ONE ESTATE
-        </p>
-        <p style={{ fontSize: 8, letterSpacing: '0.18em', color: '#C8A87A', marginTop: 2 }}>
-          SINGLE-ESTATE SPECIALTY COFFEE
-        </p>
-      </div>
-
-      {/* Body */}
-      <div className="px-5 py-4">
-        {/* Allocation + QR row */}
-        <div className="flex items-start justify-between mb-3">
-          <div>
-            <p style={{ fontSize: 20, fontWeight: 700, color: '#1A0E06', letterSpacing: '0.02em', lineHeight: 1.1 }}>
-              {d.allocation_code || '—'}
-            </p>
-            {d.estate_location && (
-              <p style={{ fontSize: 10, color: '#8B6A47', marginTop: 3 }}>{d.estate_location}</p>
-            )}
-          </div>
-          {d.qr_code_base64 && (
-            <div style={{ padding: 4, border: '1px solid #E0D0BC', borderRadius: 6, background: '#fff', flexShrink: 0 }}>
-              <img
-                src={`data:image/png;base64,${d.qr_code_base64}`}
-                alt="QR"
-                style={{ width: 60, height: 60, display: 'block' }}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Uploaded image */}
-        {d.label_image && (
-          <div className="mb-3 rounded-lg overflow-hidden" style={{ border: '1px solid #E0D0BC' }}>
-            <img
-              src={d.label_image}
-              alt="Label"
-              style={{ width: '100%', maxHeight: 120, objectFit: 'cover', display: 'block' }}
-            />
-          </div>
-        )}
-
-        {/* Detail rows */}
-        <div
-          className="space-y-1.5 pt-3"
-          style={{ borderTop: '1px solid #E8DAC8', fontSize: 11 }}
-        >
-          <LabelRow label="Process" value={PROCESS_LABEL[d.process] || d.process} />
-          {d.harvest_year && <LabelRow label="Harvest" value={d.harvest_year} />}
-          {d.variety      && <LabelRow label="Variety" value={d.variety} />}
-          {d.roast_level  && <LabelRow label="Roast"   value={d.roast_level} />}
-          {d.flavour_notes && (
-            <LabelRow label="Profile" value={d.flavour_notes} />
-          )}
-        </div>
-      </div>
-
-      {/* Footer */}
-      <div
-        className="text-center py-2"
-        style={{ background: '#F0E6D6', borderTop: '1px solid #D4C4AC' }}
-      >
-        <p style={{ fontSize: 9, color: '#6F5035', letterSpacing: '0.05em' }}>
-          Net Wt. {d.net_weight_g || '—'}g · Roasted
-        </p>
+      <div className="px-5 py-8 text-center">
+        <p style={{ fontSize: 12, color: '#A8896A' }}>Upload a label image to preview</p>
       </div>
     </div>
   );

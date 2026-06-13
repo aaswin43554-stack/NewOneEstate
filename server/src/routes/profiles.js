@@ -90,6 +90,7 @@ router.post('/', requireRole('admin', 'roaster'), async (req, res) => {
   const tenant_id = req.user.tenant_id;
   const {
     source_session_id,
+    roast_id,
     estate, process, harvest_year, charge_temp_c, target_dtr, eject_temp_c,
     total_time_target_s, flavour_target,
   } = req.body;
@@ -124,12 +125,12 @@ router.post('/', requireRole('admin', 'roaster'), async (req, res) => {
     try {
       const { rows: [profile] } = await pool.query(
         `INSERT INTO oec_roast_profiles
-           (tenant_id, source_session_id, estate, process, harvest_year,
+           (tenant_id, source_session_id, roast_id, estate, process, harvest_year,
             charge_temp_c, target_dtr, eject_temp_c, total_time_target_s, flavour_target,
             status, approved_at, approved_by, created_by, updated_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'approved',NOW(),$11,$11,$11) RETURNING *`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'approved',NOW(),$12,$12,$12) RETURNING *`,
         [
-          tenant_id, source_session_id, estateV, process, parseInt(harvest_year),
+          tenant_id, source_session_id, roast_id || null, estateV, process, parseInt(harvest_year),
           chargeC, dtr, ejectC, totalS, flavour_target || null,
           req.user.id,
         ]
@@ -149,10 +150,10 @@ router.post('/', requireRole('admin', 'roaster'), async (req, res) => {
   try {
     const { rows: [profile] } = await pool.query(
       `INSERT INTO oec_roast_profiles
-         (tenant_id, estate, process, harvest_year, charge_temp_c, target_dtr,
+         (tenant_id, roast_id, estate, process, harvest_year, charge_temp_c, target_dtr,
           eject_temp_c, total_time_target_s, flavour_target, status, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'development',$10,$10) RETURNING *`,
-      [tenant_id, estate, process, parseInt(harvest_year), parseInt(charge_temp_c),
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'development',$11,$11) RETURNING *`,
+      [tenant_id, roast_id || null, estate, process, parseInt(harvest_year), parseInt(charge_temp_c),
        parseFloat(target_dtr), parseInt(eject_temp_c), parseInt(total_time_target_s),
        flavour_target || null, req.user.id]
     );
@@ -175,19 +176,21 @@ router.put('/:id', requireRole('admin', 'roaster'), async (req, res) => {
     return res.status(400).json({ error: 'This profile cannot be edited. Only development profiles can be modified.' });
   }
 
-  const { estate, charge_temp_c, target_dtr, eject_temp_c, total_time_target_s, flavour_target } = req.body;
+  const { roast_id, estate, charge_temp_c, target_dtr, eject_temp_c, total_time_target_s, flavour_target } = req.body;
   try {
     const { rows: [updated] } = await pool.query(
       `UPDATE oec_roast_profiles SET
-         estate = COALESCE($1, estate),
-         charge_temp_c = COALESCE($2, charge_temp_c),
-         target_dtr = COALESCE($3, target_dtr),
-         eject_temp_c = COALESCE($4, eject_temp_c),
-         total_time_target_s = COALESCE($5, total_time_target_s),
-         flavour_target = COALESCE($6, flavour_target),
-         updated_at = NOW(), updated_by = $7
-       WHERE id = $8 RETURNING *`,
+         roast_id = COALESCE($1, roast_id),
+         estate = COALESCE($2, estate),
+         charge_temp_c = COALESCE($3, charge_temp_c),
+         target_dtr = COALESCE($4, target_dtr),
+         eject_temp_c = COALESCE($5, eject_temp_c),
+         total_time_target_s = COALESCE($6, total_time_target_s),
+         flavour_target = COALESCE($7, flavour_target),
+         updated_at = NOW(), updated_by = $8
+       WHERE id = $9 RETURNING *`,
       [
+        roast_id || null,
         estate || null,
         charge_temp_c ? parseInt(charge_temp_c) : null,
         target_dtr ? parseFloat(target_dtr) : null,
@@ -279,6 +282,27 @@ router.post('/:id/retire', async (req, res) => {
   } catch (err) {
     console.error('Retire profile:', err);
     return res.status(500).json({ error: 'Failed to retire profile.' });
+  }
+});
+
+// DELETE /api/profiles/:id
+router.delete('/:id', requireRole('admin'), async (req, res) => {
+  const tenant_id = req.user.tenant_id;
+  try {
+    const { rows: [profile] } = await pool.query(
+      'SELECT id FROM oec_roast_profiles WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
+      [req.params.id, tenant_id]
+    );
+    if (!profile) return res.status(404).json({ error: 'Profile not found.' });
+
+    await pool.query(
+      'UPDATE oec_roast_profiles SET deleted_at = NOW(), updated_by = $1 WHERE id = $2',
+      [req.user.id, req.params.id]
+    );
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('Delete profile:', err);
+    return res.status(500).json({ error: 'Failed to delete profile.' });
   }
 });
 

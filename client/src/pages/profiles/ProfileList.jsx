@@ -40,7 +40,7 @@ function makeCurveData(profile) {
   return points;
 }
 
-function ProfileCard({ profile, onView, onEdit, onSubmit, onDuplicate, onRetire, isEditor, isAdmin }) {
+function ProfileCard({ profile, onView, onEdit, onSubmit, onDuplicate, onRetire, onDelete, isEditor, isAdmin }) {
   const meta = STATUS_META[profile.status] || { cls: 'badge-draft', label: profile.status };
   const curveData = makeCurveData(profile);
   const isRetired = profile.status === 'retired';
@@ -139,6 +139,12 @@ function ProfileCard({ profile, onView, onEdit, onSubmit, onDuplicate, onRetire,
           className="ml-auto">
           Duplicate
         </Button>
+        {isAdmin && (
+          <Button variant="ghost" size="sm" onClick={onDelete}
+            style={{ color: '#A32D2D' }}>
+            Delete
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -161,8 +167,10 @@ export default function ProfileList() {
   const isAdmin  = user?.role === 'admin';
   const isEditor = ['admin', 'roaster'].includes(user?.role);
 
-  const [retireConfirm, setRetireConfirm] = useState(null); // profile id to retire
+  const [retireConfirm, setRetireConfirm] = useState(null);
   const [retiring, setRetiring] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
 
   async function submit(id) {
@@ -175,6 +183,14 @@ export default function ProfileList() {
     await api.post(`/profiles/${id}/retire`, {});
     setRetireConfirm(null);
     setRetiring(false);
+    load();
+  }
+
+  async function deleteProfile(id) {
+    setDeleting(true);
+    await api.delete(`/profiles/${id}`);
+    setDeleteConfirm(null);
+    setDeleting(false);
     load();
   }
 
@@ -243,6 +259,7 @@ export default function ProfileList() {
                       onSubmit={() => submit(p.id)}
                       onRetire={() => setRetireConfirm(p.id)}
                       onDuplicate={() => navigate(`/profiles/new?from=${p.id}`)}
+                      onDelete={() => setDeleteConfirm(p.id)}
                     />
                   ))}
                 </div>
@@ -287,6 +304,7 @@ export default function ProfileList() {
                           onSubmit={() => {}}
                           onRetire={() => {}}
                           onDuplicate={() => navigate(`/profiles/new?from=${p.id}`)}
+                          onDelete={() => setDeleteConfirm(p.id)}
                         />
                       ))}
                     </div>
@@ -312,6 +330,26 @@ export default function ProfileList() {
                   {retiring ? 'Retiring…' : 'Retire'}
                 </Button>
                 <Button variant="secondary" onClick={() => setRetireConfirm(null)}>Cancel</Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete confirmation modal */}
+        {deleteConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: 'rgba(34,21,8,0.2)' }}>
+            <div className="bg-white rounded-2xl border border-coffee-200 w-full max-w-sm p-6">
+              <h3 className="text-base text-coffee-900 mb-2" style={{ fontWeight: 500 }}>Delete Profile</h3>
+              <p className="text-sm text-coffee-600 mb-5">
+                This will permanently remove the profile. This action cannot be undone.
+              </p>
+              <div className="flex gap-3">
+                <Button onClick={() => deleteProfile(deleteConfirm)} disabled={deleting}
+                  className="flex-1 justify-center" variant="destructive">
+                  {deleting ? 'Deleting…' : 'Delete'}
+                </Button>
+                <Button variant="secondary" onClick={() => setDeleteConfirm(null)}>Cancel</Button>
               </div>
             </div>
           </div>
