@@ -89,6 +89,10 @@ export default function AllocationDetail() {
   const [deleting,     setDeleting]     = useState(false);
   const [deleteError,  setDeleteError]  = useState('');
 
+  // Archive
+  const [archiving,   setArchiving]   = useState(false);
+  const [archiveError, setArchiveError] = useState('');
+
   const [journalDocs,       setJournalDocs]       = useState(null);
   const [journalLoading,    setJournalLoading]    = useState(false);
   const [journalGenerating, setJournalGenerating] = useState(false);
@@ -213,12 +217,29 @@ export default function AllocationDetail() {
     else { setDeleteError(d.error || 'Failed to delete.'); setDeleting(false); }
   }
 
+  async function archiveAllocation() {
+    setArchiving(true); setArchiveError('');
+    const res = await api.put(`/allocations/${id}/archive`, {});
+    const d   = await res.json();
+    if (res.ok) { navigate('/allocations'); }
+    else { setArchiveError(d.error || 'Failed to archive.'); setArchiving(false); }
+  }
+
+  async function unarchiveAllocation() {
+    setArchiving(true); setArchiveError('');
+    const res = await api.put(`/allocations/${id}/unarchive`, {});
+    const d   = await res.json();
+    if (res.ok) { load(); }
+    else { setArchiveError(d.error || 'Failed to unarchive.'); setArchiving(false); }
+  }
+
   if (loading) return <Layout><div className="px-6 py-6 text-sm text-coffee-400">Loading…</div></Layout>;
   if (!data)   return <Layout><div className="px-6 py-6 text-sm" style={{ color: '#A32D2D' }}>Allocation not found.</div></Layout>;
 
   const { allocation: a, lot, requests, state_log, roast_sessions, dispatch_date, projected_bags, confirmed_bags } = data;
-  const isClosed  = a.state === 'allocation_closed';
-  const isAdmin   = ['admin', 'roaster'].includes(user?.role);
+  const isClosed   = a.state === 'allocation_closed';
+  const isArchived = !!a.archived_at;
+  const isAdmin    = ['admin', 'roaster'].includes(user?.role);
   const bagPct    = projected_bags > 0 ? Math.min(100, Math.round((confirmed_bags / projected_bags) * 100)) : 0;
   const bagBarColor = bagPct >= 100 ? '#A32D2D' : bagPct >= 90 ? '#BA7517' : '#3B6D11';
   const allChecksPassed = transitionChecks?.checks?.every(c => c.passed) ?? true;
@@ -248,26 +269,48 @@ export default function AllocationDetail() {
               Synced from One Estate
             </span>
           )}
-          {isAdmin && !isClosed && (
-            <div className="ml-auto flex gap-2">
+          <div className="ml-auto flex gap-2">
+            {isAdmin && !isClosed && (
+              <>
+                <button
+                  onClick={openEdit}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors"
+                  style={{ borderColor: '#E0D0BC', color: '#8B6A47' }}
+                >
+                  <Pencil size={12} /> Edit
+                </button>
+                {user?.role === 'admin' && (
+                  <button
+                    onClick={() => { setDeleteConfirm(''); setDeleteError(''); setDeleteOpen(true); }}
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors"
+                    style={{ borderColor: '#F3C0C0', color: '#A32D2D' }}
+                  >
+                    <Trash2 size={12} /> Delete
+                  </button>
+                )}
+              </>
+            )}
+            {user?.role === 'admin' && isClosed && !isArchived && (
               <button
-                onClick={openEdit}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors"
+                onClick={archiveAllocation}
+                disabled={archiving}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-50"
                 style={{ borderColor: '#E0D0BC', color: '#8B6A47' }}
               >
-                <Pencil size={12} /> Edit
+                {archiving ? '…' : 'Archive'}
               </button>
-              {user?.role === 'admin' && (
-                <button
-                  onClick={() => { setDeleteConfirm(''); setDeleteError(''); setDeleteOpen(true); }}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors"
-                  style={{ borderColor: '#F3C0C0', color: '#A32D2D' }}
-                >
-                  <Trash2 size={12} /> Delete
-                </button>
-              )}
-            </div>
-          )}
+            )}
+            {user?.role === 'admin' && isArchived && (
+              <button
+                onClick={unarchiveAllocation}
+                disabled={archiving}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-50"
+                style={{ borderColor: '#E0D0BC', color: '#8B6A47' }}
+              >
+                {archiving ? '…' : 'Unarchive'}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* State transition */}
@@ -289,7 +332,16 @@ export default function AllocationDetail() {
                 Move to: {NEXT_LABELS[a.state]}
               </Button>
             )}
-            {isClosed && <p className="text-xs text-coffee-400">This allocation is closed.</p>}
+            {archiveError && <p className="text-xs" style={{ color: '#A32D2D' }}>{archiveError}</p>}
+          {isClosed && !isArchived && <p className="text-xs text-coffee-400">This allocation is closed.</p>}
+          {isArchived && (
+            <span
+              className="text-xs px-2 py-0.5 rounded-full"
+              style={{ background: '#F2EAE0', color: '#8B6A47' }}
+            >
+              Archived
+            </span>
+          )}
           </div>
         </div>
 

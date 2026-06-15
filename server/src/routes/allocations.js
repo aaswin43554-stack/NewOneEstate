@@ -298,6 +298,49 @@ router.put('/:id/transition', requireRole('admin', 'roaster'), async (req, res) 
   }
 });
 
+// PUT /api/allocations/:id/archive
+router.put('/:id/archive', requireRole('admin'), async (req, res) => {
+  const tenant_id = req.user.tenant_id;
+  const alloc = await fetchAllocation(req.params.id, tenant_id);
+  if (!alloc) return res.status(404).json({ error: 'Allocation not found.' });
+  if (alloc.state !== 'allocation_closed') {
+    return res.status(400).json({ error: 'Only closed allocations can be archived.' });
+  }
+  if (alloc.archived_at) {
+    return res.status(400).json({ error: 'Allocation is already archived.' });
+  }
+  try {
+    const { rows: [updated] } = await pool.query(
+      `UPDATE oec_allocations SET archived_at = NOW(), updated_at = NOW(), updated_by = $1 WHERE id = $2 RETURNING *`,
+      [req.user.id, alloc.id]
+    );
+    return res.json({ allocation: updated });
+  } catch (err) {
+    console.error('Archive allocation:', err);
+    return res.status(500).json({ error: 'Failed to archive allocation.' });
+  }
+});
+
+// PUT /api/allocations/:id/unarchive
+router.put('/:id/unarchive', requireRole('admin'), async (req, res) => {
+  const tenant_id = req.user.tenant_id;
+  const alloc = await fetchAllocation(req.params.id, tenant_id);
+  if (!alloc) return res.status(404).json({ error: 'Allocation not found.' });
+  if (!alloc.archived_at) {
+    return res.status(400).json({ error: 'Allocation is not archived.' });
+  }
+  try {
+    const { rows: [updated] } = await pool.query(
+      `UPDATE oec_allocations SET archived_at = NULL, updated_at = NOW(), updated_by = $1 WHERE id = $2 RETURNING *`,
+      [req.user.id, alloc.id]
+    );
+    return res.json({ allocation: updated });
+  } catch (err) {
+    console.error('Unarchive allocation:', err);
+    return res.status(500).json({ error: 'Failed to unarchive allocation.' });
+  }
+});
+
 // GET /api/allocations/:id/transition-check
 router.get('/:id/transition-check', async (req, res) => {
   const tenant_id = req.user.tenant_id;
@@ -441,10 +484,13 @@ router.delete('/:id', requireRole('admin'), async (req, res) => {
 // GET /api/allocations
 router.get('/', async (req, res) => {
   const tenant_id = req.user.tenant_id;
-  const { state, process } = req.query;
+  const { state, process, include_archived } = req.query;
 
   const params = [tenant_id];
   const conditions = ['a.tenant_id = $1', 'a.deleted_at IS NULL'];
+  if (!include_archived || include_archived === 'false') {
+    conditions.push('a.archived_at IS NULL');
+  }
   if (state)   { params.push(state);   conditions.push(`a.state = $${params.length}`); }
   if (process) { params.push(process); conditions.push(`a.process = $${params.length}`); }
 

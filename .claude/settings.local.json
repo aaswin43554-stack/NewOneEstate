@@ -52,7 +52,16 @@
       "Bash(xargs grep -l \"allocation/\\\\|allocation/:code\\\\|/allocation\")",
       "Bash(xargs grep -l \"ALTITUDE\\\\|Roast Days\\\\|dispatch_info\\\\|Join Release\\\\|allocation/W\")",
       "Bash(xargs grep -l \"Return Home\\\\|return.*home\\\\|ReturnHome\")",
-      "Bash(node_modules\\\\.bin\\\\vite build *)"
+      "Bash(node_modules\\\\.bin\\\\vite build *)",
+      "Bash(findstr -i \"admin\\\\|control\\\\|order\\\\|product\")",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\aaswi\\\\OneDrive\\\\Desktop\\\\Work\" -Recurse -Include \"*.jsx\",\"*.tsx\",\"*.js\")",
+      "Bash(Select-String -Pattern \"Live Control|LiveControl\")",
+      "Bash(Select-Object -First 10 Path)",
+      "Bash(git -C \"C:\\\\Users\\\\aaswi\\\\OneDrive\\\\Desktop\\\\Work\\\\CoffeeShop\" diff HEAD --stat)",
+      "PowerShell(netstat *)",
+      "PowerShell(Get-Job *)",
+      "Bash(echo \"SERVER_PID=$!\")",
+      "Bash(grep -v \"^#\\\\|//\")"
     ]
   }
 }
