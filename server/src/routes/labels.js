@@ -186,6 +186,23 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+// DELETE /api/labels/:label_id — hard delete a label
+router.delete('/:label_id', async (req, res) => {
+  const tenant_id = req.user.tenant_id;
+  try {
+    const { rows: [label] } = await pool.query(
+      'SELECT id FROM oec_labels WHERE id = $1 AND tenant_id = $2',
+      [req.params.label_id, tenant_id]
+    );
+    if (!label) return res.status(404).json({ error: 'Label not found.' });
+    await pool.query('DELETE FROM oec_labels WHERE id = $1', [label.id]);
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('Delete label:', err);
+    return res.status(500).json({ error: 'Failed to delete label.' });
+  }
+});
+
 // GET /api/labels/:allocation_id — get label for allocation
 router.get('/:allocation_id', async (req, res) => {
   const tenant_id = req.user.tenant_id;

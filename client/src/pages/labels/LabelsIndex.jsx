@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../../components/Layout';
 import { api } from '../../lib/api';
+import { useAuth } from '../../lib/auth';
 import { PageHeader, Button, ProcessBadge } from '../../components/ui';
 
 const PROCESS_LABEL = {
@@ -11,7 +12,7 @@ const PROCESS_LABEL = {
   Anaerobic: 'Anaerobic Process',
 };
 
-function MiniLabel({ a }) {
+function MiniLabel({ a, onDelete, isAdmin }) {
   const hasLabel = !!a.label_id;
   return (
     <div
@@ -70,14 +71,23 @@ function MiniLabel({ a }) {
             )}
           </div>
 
-          {/* Net weight footer */}
+          {/* Net weight footer + delete */}
           <div
-            className="text-center py-1"
+            className="py-1 px-2 flex items-center justify-between"
             style={{ background: '#F2EAE0', borderTop: '1px solid #E0D0BC' }}
           >
             <p style={{ fontSize: 8, color: '#6F5035' }}>
               Net Wt. {a.net_weight_g || '—'}g · Roasted
             </p>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); onDelete(); }}
+                style={{ fontSize: 8, color: '#A32D2D', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+              >
+                Delete
+              </button>
+            )}
           </div>
         </>
       ) : (
@@ -95,6 +105,9 @@ function MiniLabel({ a }) {
           >
             No label created
           </p>
+          <p style={{ fontSize: 10, color: '#8B6A47', marginTop: 2, fontWeight: 500 }}>
+            + Create Label →
+          </p>
         </div>
       )}
     </div>
@@ -102,17 +115,31 @@ function MiniLabel({ a }) {
 }
 
 export default function LabelsIndex() {
-  const [allocations, setAllocations] = useState([]);
-  const [loading, setLoading]         = useState(true);
-  const [filter, setFilter]           = useState('all');
+  const [allocations,   setAllocations]   = useState([]);
+  const [loading,       setLoading]       = useState(true);
+  const [filter,        setFilter]        = useState('all');
+  const [deleteConfirm, setDeleteConfirm] = useState(null); // { labelId, allocationId }
+  const [deleting,      setDeleting]      = useState(false);
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
 
-  useEffect(() => {
+  function load() {
     api.get('/labels')
       .then(r => r.json())
       .then(d => setAllocations(d.allocations || []))
       .finally(() => setLoading(false));
-  }, []);
+  }
+
+  useEffect(load, []);
+
+  async function deleteLabel(labelId) {
+    setDeleting(true);
+    await api.delete(`/labels/${labelId}`);
+    setDeleteConfirm(null);
+    setDeleting(false);
+    load();
+  }
 
   const withLabel    = allocations.filter(a => a.label_id);
   const withoutLabel = allocations.filter(a => !a.label_id);
@@ -128,6 +155,11 @@ export default function LabelsIndex() {
         <PageHeader
           title="Labels"
           subtitle={`${withLabel.length} label${withLabel.length !== 1 ? 's' : ''} created`}
+          actions={
+            <Button variant="primary" onClick={() => { setFilter('unlabelled'); }}>
+              + Create Label
+            </Button>
+          }
         />
 
         {/* Filter pills */}
@@ -169,9 +201,32 @@ export default function LabelsIndex() {
                 className="text-left hover:scale-[1.02] transition-transform"
                 style={{ cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
               >
-                <MiniLabel a={a} />
+                <MiniLabel
+                  a={a}
+                  isAdmin={isAdmin}
+                  onDelete={() => setDeleteConfirm({ labelId: a.label_id, allocationId: a.id })}
+                />
               </button>
             ))}
+          </div>
+        )}
+
+        {deleteConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: 'rgba(34,21,8,0.2)' }}>
+            <div className="bg-white rounded-2xl border border-coffee-200 w-full max-w-sm p-6">
+              <h3 className="text-base text-coffee-900 mb-2" style={{ fontWeight: 500 }}>Delete Label</h3>
+              <p className="text-sm text-coffee-600 mb-5">
+                This will remove the label. You can recreate it at any time from the allocation.
+              </p>
+              <div className="flex gap-3">
+                <Button onClick={() => deleteLabel(deleteConfirm.labelId)} disabled={deleting}
+                  className="flex-1 justify-center" variant="destructive">
+                  {deleting ? 'Deleting…' : 'Delete'}
+                </Button>
+                <Button variant="secondary" onClick={() => setDeleteConfirm(null)}>Cancel</Button>
+              </div>
+            </div>
           </div>
         )}
       </div>

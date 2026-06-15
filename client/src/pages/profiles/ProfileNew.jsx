@@ -52,7 +52,7 @@ export default function ProfileNew() {
   // Manual-mode state
   const [source, setSource] = useState(null);
   const [form, setForm] = useState({
-    estate: '', process: 'Washed', harvest_year: new Date().getFullYear(),
+    roast_id: '', estate: '', process: 'Washed', harvest_year: new Date().getFullYear(),
     charge_temp_c: '', target_dtr: '', eject_temp_c: '',
     total_time_mss: '', flavour_target: '',
   });
@@ -135,6 +135,7 @@ export default function ProfileNew() {
     setSaving(true);
     try {
       const body = {
+        roast_id: form.roast_id.trim() || null,
         estate: form.estate, process: form.process, harvest_year: parseInt(form.harvest_year),
         charge_temp_c: parseInt(form.charge_temp_c), target_dtr: parseFloat(form.target_dtr),
         eject_temp_c: parseInt(form.eject_temp_c), total_time_target_s: totalS,
@@ -287,6 +288,7 @@ export default function ProfileNew() {
         {/* ── MANUAL ENTRY ─────────────────────────────────────────────── */}
         {mode === 'manual' && (
           <form onSubmit={handleManualSubmit} className="space-y-4">
+            <FormInput label="Roast ID" value={form.roast_id} onChange={e => set('roast_id', e.target.value)} placeholder="e.g. R-2026-001" />
             <FormInput label="Estate" value={form.estate} onChange={e => set('estate', e.target.value)} required />
 
             <div className="grid grid-cols-2 gap-4">
