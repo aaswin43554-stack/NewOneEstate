@@ -129,7 +129,8 @@ export default function RoastLive() {
   // WebSocket
   useEffect(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${protocol}//${window.location.host}/ws/roast-live?session_id=${id}`);
+    const token = localStorage.getItem('access_token') || '';
+    const ws = new WebSocket(`${protocol}//${window.location.host}/ws/roast-live?session_id=${id}&token=${encodeURIComponent(token)}`);
     wsRef.current = ws;
     ws.onmessage = (e) => {
       const data = JSON.parse(e.data);

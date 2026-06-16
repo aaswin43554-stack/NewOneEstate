@@ -58,7 +58,7 @@ async function seed() {
     );
 
     await client.query('COMMIT');
-    console.log('[seed] Demo account created: admin@oneestate.com / Admin123!');
+    console.log('[seed] Demo account created: admin@oneestate.com');
   } catch (err) {
     if (client) await client.query('ROLLBACK').catch(() => {});
     console.error('[seed] Seed failed (non-fatal):', err.message);

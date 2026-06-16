@@ -1,6 +1,7 @@
 'use strict';
 
 const WebSocket = require('ws');
+const jwt       = require('jsonwebtoken');
 const pool      = require('../config/db');
 
 const TICK_MS = 2000;
@@ -80,7 +81,25 @@ function setupRoastWebSocket(server) {
 
   wss.on('connection', async (ws, req) => {
     const qs         = (req.url || '').split('?')[1] || '';
-    const session_id = new URLSearchParams(qs).get('session_id');
+    const params     = new URLSearchParams(qs);
+    const session_id = params.get('session_id');
+    const rawToken   = params.get('token')
+      || (req.headers.authorization || '').replace(/^Bearer /, '');
+
+    // Verify JWT before doing anything
+    if (!rawToken || !process.env.JWT_SECRET) {
+      ws.send(JSON.stringify({ error: 'Authentication required' }));
+      ws.close();
+      return;
+    }
+    let wsUser;
+    try {
+      wsUser = jwt.verify(rawToken, process.env.JWT_SECRET);
+    } catch {
+      ws.send(JSON.stringify({ error: 'Invalid or expired token' }));
+      ws.close();
+      return;
+    }
 
     if (!session_id) {
       ws.send(JSON.stringify({ error: 'session_id query param is required' }));
@@ -91,8 +110,8 @@ function setupRoastWebSocket(server) {
     let session;
     try {
       const { rows } = await pool.query(
-        'SELECT * FROM oec_roast_sessions WHERE id = $1 AND deleted_at IS NULL',
-        [session_id]
+        'SELECT * FROM oec_roast_sessions WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
+        [session_id, wsUser.tenant_id]
       );
       session = rows[0];
     } catch (err) {

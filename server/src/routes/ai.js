@@ -22,13 +22,25 @@ function extractJSON(text) {
   try {
     return JSON.parse(fenced ? fenced[1] : text);
   } catch {
+    console.error('[AI] JSON parse failed on response:', text?.slice(0, 200));
     return null;
   }
+}
+
+// Guard against oversized payloads reaching the Anthropic API
+function checkPayloadSize(req, res) {
+  const size = JSON.stringify(req.body).length;
+  if (size > 20000) {
+    res.status(413).json({ error: 'Request payload too large.' });
+    return false;
+  }
+  return true;
 }
 
 // ─── POST /api/ai/cupping-structure ──────────────────────────────────────────
 // Takes raw cupping observations, returns structured, cleaned-up versions.
 router.post('/cupping-structure', async (req, res) => {
+  if (!checkPayloadSize(req, res)) return;
   const { obs } = req.body; // { aroma: "...", flavour: "...", ... }
   if (!obs || typeof obs !== 'object') {
     return res.status(400).json({ error: 'obs object required.' });

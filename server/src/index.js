@@ -20,6 +20,8 @@ const express     = require('express');
 const cors        = require('cors');
 const path        = require('path');
 const compression = require('compression');
+const helmet      = require('helmet');
+const rateLimit   = require('express-rate-limit');
 
 const migrate = require('./scripts/migrate');
 const seed    = require('./scripts/seed');
@@ -44,24 +46,46 @@ const { setupRoastWebSocket } = require('./services/roastHardware');
 const app  = express();
 const PORT = process.env.PORT || 3001;
 
+// Security headers
+app.use(helmet({ contentSecurityPolicy: false }));
+
 // Gzip all responses — biggest win on JSON-heavy API responses
 app.use(compression());
 
-// Allow all origins in production (frontend is same-origin anyway)
+// Explicit CORS origin — never use `true` with credentials:true
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
+  : [process.env.CLIENT_URL || 'http://localhost:5173'];
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' ? true : (process.env.CLIENT_URL || 'http://localhost:5173'),
+  origin: (origin, cb) => {
+    // Same-origin requests (Render prod) have no Origin header — allow them
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    cb(new Error(`CORS: origin ${origin} not allowed`));
+  },
   credentials: true,
 }));
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '2mb' }));
+
+// Brute-force protection on auth endpoints
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
+});
+app.use('/api/auth/login',    authLimiter);
+app.use('/api/auth/register', authLimiter);
 
 // Request logger — logs every incoming request and its response status/time
 app.use((req, res, next) => {
   const start = Date.now();
   const { method, path: reqPath, ip } = req;
   res.on('finish', () => {
-    const ms = Date.now() - start;
+    const ms    = Date.now() - start;
+    const uid   = req.user?.id || '-';
     const level = res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'log';
-    console[level](`[HTTP] ${method} ${reqPath} -> ${res.statusCode} (${ms}ms) [${ip}]`);
+    console[level](`[HTTP] ${method} ${reqPath} -> ${res.statusCode} (${ms}ms) [${ip}] uid=${uid}`);
   });
   next();
 });
@@ -229,7 +253,7 @@ app.get('/api/allocation-requests', requireAuth, async (req, res) => {
       `SELECT ar.id, ar.contact_name, ar.channel, ar.quantity_bags, ar.status,
               ar.created_at, a.allocation_code, a.process
        FROM oec_allocation_requests ar
-       JOIN oec_allocations a ON a.id = ar.allocation_id
+       JOIN oec_allocations a ON a.id = ar.allocation_id AND a.tenant_id = $1
        WHERE ar.tenant_id = $1
        ORDER BY ar.created_at DESC`,
       [req.user.tenant_id]

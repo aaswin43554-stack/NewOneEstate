@@ -151,6 +151,17 @@ router.post('/', requireRole('admin', 'roaster'), async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+
+    // Verify lot belongs to this tenant (IDOR guard)
+    const { rows: lotCheck } = await client.query(
+      'SELECT 1 FROM oec_lots WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
+      [lot_id, tenant_id]
+    );
+    if (!lotCheck.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Lot not found.' });
+    }
+
     const allocation_code = await generateAllocationCode(tenant_id, client);
     const { rows: [alloc] } = await client.query(
       `INSERT INTO oec_allocations
