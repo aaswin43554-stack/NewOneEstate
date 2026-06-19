@@ -36,7 +36,7 @@ router.post('/sync-from-admin', async (req, res) => {
     return res.status(400).json({ error: 'Missing required sync fields.' });
   }
 
-  const VALID_STATES = ['upcoming', 'open_for_requests', 'roasting_in_progress', 'allocation_closed'];
+  const VALID_STATES = ['upcoming', 'open_for_requests', 'roasting_in_progress', 'resting', 'dispatched', 'allocation_closed'];
   if (!VALID_STATES.includes(state)) {
     return res.status(400).json({ error: `Invalid state: ${state}` });
   }

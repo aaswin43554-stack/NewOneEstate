@@ -90,9 +90,12 @@ export default function RoastLive() {
   const [completeForm, setCompleteForm] = useState({
     roastedKg: '', ejectTemp: '', totalMSS: '', devMSS: '',
   });
-  const [error,  setError]  = useState('');
-  const [saving, setSaving] = useState(false);
-  const [hwLost, setHwLost] = useState(false);
+  const [error,      setError]      = useState('');
+  const [saving,     setSaving]     = useState(false);
+  const [hwLost,     setHwLost]     = useState(false);
+  const [aiAlert,    setAiAlert]    = useState(null);   // { anomalies, overall_assessment }
+  const [aiChecking, setAiChecking] = useState(false);
+  const aiTriggeredAt = useRef(new Set()); // track which pct thresholds have fired
 
   const wsRef    = useRef(null);
   const timerRef = useRef(null);
@@ -156,6 +159,39 @@ export default function RoastLive() {
 
   const targetDuration = session?.profile_duration_s || 600; // default 10 min
   const elapsedPct = Math.min(100, (elapsed / targetDuration) * 100);
+
+  async function runAnomalyCheck() {
+    if (aiChecking || points.length < 10) return;
+    setAiChecking(true);
+    try {
+      const res = await api.post('/ai/roast-anomaly', {
+        session_id: id,
+        live_curve: points,
+        elapsed_s: elapsed,
+        is_live: true,
+      });
+      if (res.ok) {
+        const d = await res.json();
+        if (d.analysis) setAiAlert(d.analysis);
+      }
+    } catch {
+      // silent — don't interrupt the live roast UI
+    } finally {
+      setAiChecking(false);
+    }
+  }
+
+  // Auto-trigger anomaly check at 50% and 80% of target duration
+  useEffect(() => {
+    const triggers = [50, 80];
+    for (const pct of triggers) {
+      if (elapsedPct >= pct && !aiTriggeredAt.current.has(pct)) {
+        aiTriggeredAt.current.add(pct);
+        runAnomalyCheck();
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [elapsedPct]);
 
   const ror = points.length >= 8
     ? ((points[points.length - 1].temp - points[points.length - 8].temp) / (15 / 60)).toFixed(1)
@@ -237,6 +273,39 @@ export default function RoastLive() {
           >
             Variance detected — Actual: {varianceBanner.actual}°C · Target: {varianceBanner.target}°C ·
             Delta: {varianceBanner.actual - varianceBanner.target > 0 ? '+' : ''}{varianceBanner.actual - varianceBanner.target}°C
+          </div>
+        )}
+
+        {/* AI anomaly alert */}
+        {aiAlert && (
+          <div
+            className="mb-4 rounded-xl border text-sm overflow-hidden"
+            style={{ borderColor: aiAlert.anomalies?.some(a => a.severity === 'high') ? '#A32D2D' : '#BA7517' }}
+          >
+            <div
+              className="px-4 py-2 flex items-center justify-between"
+              style={{
+                background: aiAlert.anomalies?.some(a => a.severity === 'high') ? '#FCEBEB' : '#FEF3C7',
+                color: aiAlert.anomalies?.some(a => a.severity === 'high') ? '#A32D2D' : '#92400E',
+              }}
+            >
+              <span style={{ fontWeight: 500 }}>
+                AI Trajectory Analysis · {aiAlert.anomalies?.length || 0} finding{aiAlert.anomalies?.length !== 1 ? 's' : ''}
+              </span>
+              <button onClick={() => setAiAlert(null)} className="text-xs underline opacity-60">Dismiss</button>
+            </div>
+            <div className="px-4 py-3 bg-white space-y-1">
+              <p className="text-coffee-600">{aiAlert.overall_assessment}</p>
+              {aiAlert.anomalies?.map((a, i) => (
+                <p key={i} className="text-xs text-coffee-500">
+                  <span
+                    className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle"
+                    style={{ background: a.severity === 'high' ? '#A32D2D' : a.severity === 'medium' ? '#BA7517' : '#8B6A47' }}
+                  />
+                  {a.description}
+                </p>
+              ))}
+            </div>
           </div>
         )}
 
@@ -357,6 +426,14 @@ export default function RoastLive() {
               + Note
             </Button>
           )}
+          <Button
+            variant="ghost"
+            onClick={runAnomalyCheck}
+            disabled={aiChecking || points.length < 10}
+            title="AI trajectory analysis"
+          >
+            {aiChecking ? 'Analyzing…' : 'Analyze'}
+          </Button>
           <Button
             variant="primary"
             onClick={() => setCompleteOpen(true)}

@@ -116,6 +116,37 @@ const MODULES = {
     );
     return rows;
   },
+
+  labels: async (tenant_id) => {
+    const { rows } = await pool.query(
+      `SELECT a.allocation_code, a.process, a.estate, a.harvest_year,
+              l.roast_date_start, l.roast_date_end,
+              l.ready_to_brew_date, l.best_consumed_by_date,
+              l.qr_url, l.template_version,
+              l.created_at, l.updated_at
+       FROM oec_labels l
+       JOIN oec_allocations a ON a.id = l.allocation_id
+       WHERE l.tenant_id = $1
+       ORDER BY l.created_at DESC`,
+      [tenant_id]
+    );
+    return rows;
+  },
+
+  journal: async (tenant_id) => {
+    const { rows } = await pool.query(
+      `SELECT a.allocation_code, a.process, a.estate, a.harvest_year,
+              j.document_type, j.status,
+              j.draft_content, j.published_content,
+              j.updated_at
+       FROM oec_journal_entries j
+       JOIN oec_allocations a ON a.id = j.allocation_id
+       WHERE j.tenant_id = $1 AND j.deleted_at IS NULL
+       ORDER BY a.allocation_code, j.document_type`,
+      [tenant_id]
+    );
+    return rows;
+  },
 };
 
 // GET /api/export/:module?format=csv|json

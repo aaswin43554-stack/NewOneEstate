@@ -163,6 +163,30 @@ export default function Dashboard() {
           </p>
         </div>
 
+        {/* Onboarding prompt for new accounts */}
+        {!loading && stats &&
+          stats.totalGreenStockG === 0 &&
+          stats.activeAllocationsCount === 0 &&
+          stats.totalRoastsCount === 0 && (
+          <div
+            className="flex items-center gap-4 mb-5 px-5 py-4 rounded-xl border cursor-pointer"
+            style={{ background: '#FAF6F0', borderColor: '#C9A87A' }}
+            onClick={() => navigate('/onboarding')}
+          >
+            <div
+              className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{ background: '#EDE0D0' }}
+            >
+              <span style={{ fontSize: 18 }}>☕</span>
+            </div>
+            <div className="flex-1">
+              <p className="text-sm text-coffee-900" style={{ fontWeight: 500 }}>Welcome — set up your platform</p>
+              <p className="text-xs text-coffee-400 mt-0.5">Follow the 6-step guide to run your first allocation cycle.</p>
+            </div>
+            <span className="text-coffee-400 text-sm">→</span>
+          </div>
+        )}
+
         {/* Live roast indicator */}
         {stats?.activeAllocation && (
           <div

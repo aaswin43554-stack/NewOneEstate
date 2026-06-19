@@ -57,10 +57,32 @@ export default function JournalDashboard() {
     setExpanded(e => e === allocation_id ? null : allocation_id);
   }
 
+  function triggerExport(fmt) {
+    api.get(`/export/journal?format=${fmt}`)
+      .then(r => r.blob())
+      .then(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `journal-${new Date().toISOString().split('T')[0]}.${fmt}`;
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+  }
+
   return (
     <Layout>
       <div className="max-w-5xl mx-auto px-6 py-6">
-        <PageHeader title="Journal" subtitle="Per-allocation documentation records" />
+        <PageHeader
+          title="Journal"
+          subtitle="Per-allocation documentation records"
+          actions={
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => triggerExport('csv')}>CSV</Button>
+              <Button variant="ghost" onClick={() => triggerExport('json')}>JSON</Button>
+            </div>
+          }
+        />
 
         {loading ? (
           <p className="text-sm text-coffee-400">Loading…</p>

@@ -48,6 +48,7 @@ import ContactList        from './pages/contacts/ContactList';
 import ContactForm        from './pages/contacts/ContactForm';
 import ContactDetail      from './pages/contacts/ContactDetail';
 import ContactPrivateList from './pages/contacts/ContactPrivateList';
+import Onboarding         from './pages/Onboarding';
 
 function ProtectedRoute({ children }) {
   const { user } = useAuth();
@@ -69,8 +70,9 @@ export default function App() {
           <Route path="/public/journal/:code"  element={<PublicJournal />} />
 
           {/* Dashboard */}
-          <Route path="/"          element={<P element={<Dashboard />} />} />
-          <Route path="/dashboard" element={<P element={<Dashboard />} />} />
+          <Route path="/"            element={<P element={<Dashboard />} />} />
+          <Route path="/dashboard"   element={<P element={<Dashboard />} />} />
+          <Route path="/onboarding"  element={<P element={<Onboarding />} />} />
 
           {/* Inventory (existing) */}
           <Route path="/inventory"    element={<P element={<Inventory />} />} />

@@ -3,7 +3,7 @@ import { useAuth } from '../lib/auth';
 import { api } from '../lib/api';
 import {
   LayoutDashboard, Package, Layers, Users, Star,
-  Flame, ScrollText, FlaskConical, Tag, LogOut,
+  Flame, ScrollText, FlaskConical, Tag, LogOut, BookOpen,
 } from 'lucide-react';
 
 const GROUPS = [
@@ -174,14 +174,26 @@ export default function Sidebar({ open, onClose }) {
                 </p>
               </div>
             </div>
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-1.5 text-coffee-400 hover:text-coffee-700 transition-colors"
-              style={{ fontSize: 12 }}
-            >
-              <LogOut size={12} />
-              Sign out
-            </button>
+            <div className="flex items-center justify-between">
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-1.5 text-coffee-400 hover:text-coffee-700 transition-colors"
+                style={{ fontSize: 12 }}
+              >
+                <LogOut size={12} />
+                Sign out
+              </button>
+              <NavLink
+                to="/onboarding"
+                onClick={onClose}
+                title="Setup guide"
+                className="flex items-center gap-1 text-coffee-300 hover:text-coffee-500 transition-colors"
+                style={{ fontSize: 11 }}
+              >
+                <BookOpen size={12} />
+                Setup
+              </NavLink>
+            </div>
           </div>
         )}
       </aside>

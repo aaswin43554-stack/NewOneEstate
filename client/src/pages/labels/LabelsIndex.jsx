@@ -131,6 +131,19 @@ export default function LabelsIndex() {
       .finally(() => setLoading(false));
   }
 
+  function triggerExport(fmt) {
+    api.get(`/export/labels?format=${fmt}`)
+      .then(r => r.blob())
+      .then(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `labels-${new Date().toISOString().split('T')[0]}.${fmt}`;
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+  }
+
   useEffect(load, []);
 
   async function deleteLabel(labelId) {
@@ -156,9 +169,13 @@ export default function LabelsIndex() {
           title="Labels"
           subtitle={`${withLabel.length} label${withLabel.length !== 1 ? 's' : ''} created`}
           actions={
-            <Button variant="primary" onClick={() => { setFilter('unlabelled'); }}>
-              + Create Label
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => triggerExport('csv')}>CSV</Button>
+              <Button variant="ghost" onClick={() => triggerExport('json')}>JSON</Button>
+              <Button variant="primary" onClick={() => { setFilter('unlabelled'); }}>
+                + Create Label
+              </Button>
+            </div>
           }
         />
 

@@ -3,11 +3,13 @@ const pool = require('../config/db');
 const ROAST_LOSS = { Washed: 0.17, Honey: 0.16, Natural: 0.18, Anaerobic: 0.18 };
 const REST_DAYS  = { Washed: 4,    Honey: 5,    Natural: 7,    Anaerobic: 7    };
 
-// 4-state lifecycle matching One Estate admin panel
+// 6-state lifecycle
 const STATE_SEQUENCE = [
   'upcoming',
   'open_for_requests',
   'roasting_in_progress',
+  'resting',
+  'dispatched',
   'allocation_closed',
 ];
 
@@ -146,8 +148,8 @@ async function checkTransitionPreconditions(allocation, to_state, tenant_id) {
     });
   }
 
-  // roasting_in_progress → allocation_closed
-  if (from_state === 'roasting_in_progress' && to_state === 'allocation_closed') {
+  // roasting_in_progress → resting
+  if (from_state === 'roasting_in_progress' && to_state === 'resting') {
     const { rows } = await pool.query(
       `SELECT batch_code FROM oec_roast_sessions
        WHERE allocation_id = $1 AND is_development = false
@@ -163,6 +165,31 @@ async function checkTransitionPreconditions(allocation, to_state, tenant_id) {
     });
   }
 
+  // resting → dispatched: soft-check minimum rest days elapsed
+  if (from_state === 'resting' && to_state === 'dispatched') {
+    const restDays = REST_DAYS[allocation.process] || 7;
+    const { rows } = await pool.query(
+      `SELECT MAX(ended_at) AS last_roast FROM oec_roast_sessions
+       WHERE allocation_id = $1 AND is_development = false
+         AND status = 'approved_for_bagging' AND deleted_at IS NULL`,
+      [allocation_id]
+    );
+    const lastRoast = rows[0]?.last_roast;
+    if (lastRoast) {
+      const earliest = new Date(lastRoast);
+      earliest.setDate(earliest.getDate() + restDays);
+      const now = new Date();
+      const passed = now >= earliest;
+      checks.push({
+        label: `Minimum rest period (${restDays} days)`,
+        passed,
+        reason: passed ? null :
+          `Minimum rest not complete until ${earliest.toISOString().split('T')[0]} (${restDays} days for ${allocation.process}).`,
+      });
+    }
+  }
+
+  // dispatched → allocation_closed: no preconditions, final close
   return checks;
 }
 

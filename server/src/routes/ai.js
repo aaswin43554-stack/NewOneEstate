@@ -84,8 +84,9 @@ Do not add keys that were not present. If a note is already good, improve it sli
 
 // ─── POST /api/ai/roast-anomaly ───────────────────────────────────────────────
 // Analyzes a roast session's temperature curve for anomalies.
+// Accepts optional live_curve (array of {t, temp}) for mid-roast analysis.
 router.post('/roast-anomaly', async (req, res) => {
-  const { session_id } = req.body;
+  const { session_id, live_curve, elapsed_s, is_live } = req.body;
   const tenant_id = req.user.tenant_id;
 
   if (!session_id) return res.status(400).json({ error: 'session_id required.' });
@@ -100,16 +101,28 @@ router.post('/roast-anomaly', async (req, res) => {
   );
   if (!session) return res.status(404).json({ error: 'Session not found.' });
 
-  const curve = Array.isArray(session.temperature_curve) ? session.temperature_curve : [];
+  // For live analysis, prefer the provided curve over stored data (which isn't saved yet)
+  const curve = (is_live && Array.isArray(live_curve) && live_curve.length > 0)
+    ? live_curve
+    : (Array.isArray(session.temperature_curve) ? session.temperature_curve : []);
+
   const lossPct = session.roasted_weight_out_g && session.green_weight_in_g
     ? ((1 - session.roasted_weight_out_g / session.green_weight_in_g) * 100).toFixed(1)
     : null;
 
-  const curveSummary = curve.length > 0
-    ? `${curve.length} data points. First: ${curve[0].temp}°C at t=${curve[0].t}s. Last: ${curve[curve.length-1].temp}°C at t=${curve[curve.length-1].t}s. Peak: ${Math.max(...curve.map(p => p.temp))}°C.`
-    : 'No curve data.';
+  const liveNote = is_live
+    ? `\nNOTE: This is a MID-ROAST analysis. Elapsed: ${elapsed_s ? Math.round(elapsed_s / 60) + ' min' : 'unknown'}. Eject temp and final weights are not yet recorded. Focus on trajectory and rate of rise.`
+    : '';
 
-  const prompt = `Roast session: ${session.batch_code}
+  // Sample curve to avoid oversized prompts (max 30 points)
+  const step = curve.length > 30 ? Math.floor(curve.length / 30) : 1;
+  const sampledCurve = curve.filter((_, i) => i % step === 0);
+
+  const curveSummary = curve.length > 0
+    ? `${curve.length} data points. First: ${curve[0].temp}°C at t=${curve[0].t}s. Last: ${curve[curve.length-1].temp}°C at t=${curve[curve.length-1].t}s. Peak: ${Math.max(...curve.map(p => p.temp))}°C. Sampled points: ${JSON.stringify(sampledCurve)}`
+    : 'No curve data yet.';
+
+  const prompt = `Roast session: ${session.batch_code}${liveNote}
 Charge temp: ${session.charge_temp_c ?? '—'}°C
 Eject temp: ${session.eject_temp_c ?? '—'}°C
 DTR: ${session.dtr ?? '—'}%
@@ -236,7 +249,7 @@ router.post('/stock-forecast', async (req, res) => {
   const { rows: allocs } = await pool.query(
     `SELECT allocation_code, state, planned_green_quantity_g, process, created_at
      FROM oec_allocations WHERE tenant_id = $1 AND deleted_at IS NULL
-       AND state NOT IN ('archived', 'dispatched')
+       AND state NOT IN ('allocation_closed')
      ORDER BY created_at DESC LIMIT 20`,
     [tenant_id]
   );

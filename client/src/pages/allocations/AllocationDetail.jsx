@@ -20,11 +20,12 @@ const JOURNAL_STATUS_MAP = {
   missing:      { status: 'missing',      label: 'Missing' },
 };
 
-// 4-state system matching One Estate admin panel
 const STATE_LABELS = {
   upcoming:             'Upcoming',
   open_for_requests:    'Open for Requests',
   roasting_in_progress: 'Roasting in Progress',
+  resting:              'Resting',
+  dispatched:           'Dispatched',
   allocation_closed:    'Allocation Closed',
 };
 
@@ -32,13 +33,17 @@ const STATE_TO_STATUS = {
   upcoming:             'draft',
   open_for_requests:    'published',
   roasting_in_progress: 'under_review',
+  resting:              'under_review',
+  dispatched:           'published',
   allocation_closed:    'draft',
 };
 
 const NEXT_LABELS = {
   upcoming:             'Open for Requests',
   open_for_requests:    'Start Roasting',
-  roasting_in_progress: 'Close Allocation',
+  roasting_in_progress: 'Mark Resting',
+  resting:              'Mark Dispatched',
+  dispatched:           'Close Allocation',
 };
 
 const REQUEST_STATUS_MAP = {
@@ -571,7 +576,7 @@ export default function AllocationDetail() {
         </div>
 
         {/* Label link */}
-        {a.state === 'allocation_closed' && (
+        {(a.state === 'resting' || a.state === 'dispatched' || a.state === 'allocation_closed') && (
           <div className="bg-white border border-coffee-200 rounded-xl p-5 flex items-center justify-between">
             <p className="text-sm text-coffee-700">Bag Label</p>
             <Link to={`/labels/${a.id}`}>

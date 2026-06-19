@@ -61,7 +61,8 @@
       "PowerShell(netstat *)",
       "PowerShell(Get-Job *)",
       "Bash(echo \"SERVER_PID=$!\")",
-      "Bash(grep -v \"^#\\\\|//\")"
+      "Bash(grep -v \"^#\\\\|//\")",
+      "Bash(git pull *)"
     ]
   }
 }
