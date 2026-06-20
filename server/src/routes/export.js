@@ -12,7 +12,11 @@ function toCSV(rows) {
   const headers = Object.keys(rows[0]);
   const escape = (v) => {
     if (v === null || v === undefined) return '';
-    const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
+    let s = typeof v === 'object' ? JSON.stringify(v) : String(v);
+    // Neutralize CSV formula injection: a value starting with =, +, -, @, or a
+    // tab/CR is evaluated as a formula by Excel/Google Sheets. Prefix with a
+    // single quote so the cell is treated as literal text.
+    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
     return /[,"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   return [

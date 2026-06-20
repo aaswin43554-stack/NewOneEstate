@@ -77,6 +77,17 @@ const authLimiter = rateLimit({
 app.use('/api/auth/login',    authLimiter);
 app.use('/api/auth/register', authLimiter);
 
+// Cost/abuse protection — every /api/ai call hits the paid Anthropic API,
+// so cap per-client request rate to prevent runaway spend or DoS.
+const aiLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many AI requests, please slow down.' },
+});
+app.use('/api/ai', aiLimiter);
+
 // Request logger — logs every incoming request and its response status/time
 app.use((req, res, next) => {
   const start = Date.now();

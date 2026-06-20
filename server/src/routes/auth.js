@@ -9,6 +9,11 @@ const { requireAuth } = require('../middleware/auth');
 const router = express.Router();
 const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
+// Pre-computed at boot. When a login email is unknown we still run a bcrypt
+// comparison against this hash so the response takes ~the same time as a real
+// (but wrong) password — defeats user-enumeration via timing side-channel.
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync('unused-placeholder-password', 12);
+
 function makeAccessToken(user) {
   if (!process.env.JWT_SECRET) {
     console.error('[AUTH][TOKEN_001] JWT_SECRET not set — cannot sign access token');
@@ -181,7 +186,10 @@ router.post(
       );
 
       if (!rows.length) {
-        // LOGIN_002: No user found with that email
+        // LOGIN_002: No user found with that email. Run a dummy compare so the
+        // response timing matches the wrong-password path, and return the SAME
+        // error code so the API can't be used to enumerate valid emails.
+        await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
         console.warn(`[LOGIN][LOGIN_002] No user found for email: ${email}`);
         return res.status(401).json({ error: 'Invalid credentials', code: 'LOGIN_002' });
       }
@@ -191,9 +199,10 @@ router.post(
 
       const valid = await bcrypt.compare(password, user.password_hash);
       if (!valid) {
-        // LOGIN_003: Password does not match stored hash
+        // LOGIN_003 (internal log only): password mismatch. The client-facing
+        // code is kept identical to LOGIN_002 above to prevent enumeration.
         console.warn(`[LOGIN][LOGIN_003] Password mismatch for user ${user.id} (${email})`);
-        return res.status(401).json({ error: 'Invalid credentials', code: 'LOGIN_003' });
+        return res.status(401).json({ error: 'Invalid credentials', code: 'LOGIN_002' });
       }
 
       console.log(`[LOGIN] Password OK for user ${user.id} — generating tokens`);
@@ -221,7 +230,7 @@ router.post(
         console.error(`[LOGIN][LOGIN_004] DB network error (${err.code}) — check DATABASE_URL host`);
       }
       console.error(err.stack);
-      return res.status(500).json({ error: 'Login failed', detail: err.message, code: 'LOGIN_004' });
+      return res.status(500).json({ error: 'Login failed', code: 'LOGIN_004' });
     }
   }
 );

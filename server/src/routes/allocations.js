@@ -1,6 +1,16 @@
 const express = require('express');
+const crypto  = require('crypto');
 const pool    = require('../config/db');
 const { requireAuth, requireRole } = require('../middleware/auth');
+
+// Constant-time secret comparison. Both sides are hashed to a fixed 32 bytes
+// first so timingSafeEqual never sees mismatched lengths (which would leak the
+// secret's length and throw), and the compare itself is not short-circuited.
+function secretMatches(provided, expected) {
+  const a = crypto.createHash('sha256').update(String(provided)).digest();
+  const b = crypto.createHash('sha256').update(String(expected)).digest();
+  return crypto.timingSafeEqual(a, b);
+}
 const {
   calculateProjectedBags, calculateDispatchDate,
   generateAllocationCode, getNextState,
@@ -21,7 +31,7 @@ router.post('/sync-from-admin', async (req, res) => {
   const secret = process.env.ONE_ESTATE_WEBHOOK_SECRET;
   const auth   = req.headers['authorization'] || '';
   const token  = auth.startsWith('Bearer ') ? auth.slice(7) : null;
-  if (!secret || !token || token !== secret) {
+  if (!secret || !token || !secretMatches(token, secret)) {
     return res.status(401).json({ error: 'Unauthorized.' });
   }
 
@@ -106,7 +116,7 @@ router.post('/sync-from-admin', async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('[ALLOC] sync-from-admin failed:', err.message);
-    return res.status(500).json({ error: 'Sync failed.', detail: err.message });
+    return res.status(500).json({ error: 'Sync failed.' });
   } finally {
     client.release();
   }
