@@ -137,7 +137,7 @@ router.post('/generate', async (req, res) => {
     return res.json({ label });
   } catch (err) {
     console.error('Generate label:', err);
-    return res.status(500).json({ error: 'Failed to generate label.', detail: err.message });
+    return res.status(500).json({ error: 'Failed to generate label.' });
   }
 });
 

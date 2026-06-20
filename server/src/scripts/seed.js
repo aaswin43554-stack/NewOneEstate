@@ -1,17 +1,34 @@
 /**
- * Idempotent seed — runs on every server start.
- * Creates the demo tenant + admin user if they don't exist yet.
+ * Idempotent seed — creates the demo tenant + admin user once, if absent.
+ *
+ * SECURITY: This must never ship a known-password admin to production. The
+ * account is only seeded when NODE_ENV !== 'production', OR when an explicit
+ * SEED_ADMIN_PASSWORD is provided (so a prod bootstrap can set a real secret).
+ * It also never overwrites the password of an account that already exists —
+ * resetting it on every boot would let anyone reclaim the account after the
+ * operator changed the password.
  */
 const bcrypt = require('bcryptjs');
 const pool   = require('../config/db');
 
-const DEMO_EMAIL    = 'admin@oneestate.com';
-const DEMO_PASSWORD = 'Admin123!';
-const DEMO_NAME     = 'Admin';
-const TENANT_NAME   = 'One Estate Coffee';
-const TENANT_SLUG   = 'one-estate';
+const DEMO_EMAIL  = 'admin@oneestate.com';
+const DEMO_NAME   = 'Admin';
+const TENANT_NAME = 'One Estate Coffee';
+const TENANT_SLUG = 'one-estate';
 
 async function seed() {
+  const isProd       = process.env.NODE_ENV === 'production';
+  const seedPassword = process.env.SEED_ADMIN_PASSWORD;
+
+  // In production, refuse to create a demo admin unless an explicit password
+  // was supplied — never auto-provision a publicly-known credential.
+  if (isProd && !seedPassword) {
+    console.log('[seed] Skipped — production environment without SEED_ADMIN_PASSWORD.');
+    return;
+  }
+  // Dev convenience default; only ever used outside production.
+  const password = seedPassword || 'Admin123!';
+
   let client;
   try {
     client = await pool.connect();
@@ -21,12 +38,8 @@ async function seed() {
       [DEMO_EMAIL]
     );
     if (existing.length > 0) {
-      const hash = await bcrypt.hash(DEMO_PASSWORD, 12);
-      await client.query(
-        'UPDATE oec_users SET password_hash = $1 WHERE email = $2',
-        [hash, DEMO_EMAIL]
-      );
-      console.log('[seed] Demo account password re-synced.');
+      // Account already exists — do NOT reset its password on every boot.
+      console.log('[seed] Demo account already present — password left unchanged.');
       return;
     }
 
@@ -46,7 +59,7 @@ async function seed() {
       tenantId = t.id;
     }
 
-    const hash = await bcrypt.hash(DEMO_PASSWORD, 12);
+    const hash = await bcrypt.hash(password, 12);
     const { rows: [user] } = await client.query(
       `INSERT INTO oec_users (tenant_id, name, email, password_hash, role)
        VALUES ($1, $2, $3, $4, 'admin') RETURNING id`,
