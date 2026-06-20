@@ -52,6 +52,23 @@ app.use(helmet({ contentSecurityPolicy: false }));
 // Gzip all responses — biggest win on JSON-heavy API responses
 app.use(compression());
 
+// Serve static assets BEFORE CORS. Vite adds crossorigin="" to <link> and
+// <script> tags, which causes the browser to send an Origin header even for
+// same-origin asset requests. If those requests reach the CORS middleware first
+// and the CLIENT_URL env var isn't set to the production URL, CORS blocks them
+// with a 500 JSON error — producing the blank screen / wrong-MIME-type error.
+// Serving assets here bypasses CORS entirely (they're same-origin by definition).
+const clientDistPath = path.join(__dirname, '../../client/dist');
+app.use(express.static(clientDistPath, {
+  setHeaders: (res, filePath) => {
+    if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    } else if (filePath.endsWith('index.html')) {
+      res.setHeader('Cache-Control', 'no-cache');
+    }
+  },
+}));
+
 // Explicit CORS origin — never use `true` with credentials:true
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
@@ -277,21 +294,6 @@ app.get('/api/allocation-requests', requireAuth, async (req, res) => {
 });
 
 // Serve built frontend in production
-const clientDistPath = path.join(__dirname, '../../client/dist');
-
-// Cache the content-hashed asset bundles forever (their filenames change on
-// every build, so they can never go stale), but never cache index.html — the
-// browser must always fetch a fresh one that references the current hashes.
-app.use(express.static(clientDistPath, {
-  setHeaders: (res, filePath) => {
-    if (filePath.includes(`${path.sep}assets${path.sep}`)) {
-      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-    } else if (filePath.endsWith('index.html')) {
-      res.setHeader('Cache-Control', 'no-cache');
-    }
-  },
-}));
-
 // SPA fallback — serve index.html for client-side routes ONLY. A request for a
 // missing /assets/* or /api/* path must fall through to a real 404 and never
 // receive index.html; otherwise the browser gets HTML where it expects JS/CSS/
