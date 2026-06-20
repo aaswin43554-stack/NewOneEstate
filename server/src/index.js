@@ -276,7 +276,38 @@ app.get('/api/allocation-requests', requireAuth, async (req, res) => {
   }
 });
 
-// Global error handler
+// Serve built frontend in production
+const clientDistPath = path.join(__dirname, '../../client/dist');
+
+// Cache the content-hashed asset bundles forever (their filenames change on
+// every build, so they can never go stale), but never cache index.html — the
+// browser must always fetch a fresh one that references the current hashes.
+app.use(express.static(clientDistPath, {
+  setHeaders: (res, filePath) => {
+    if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    } else if (filePath.endsWith('index.html')) {
+      res.setHeader('Cache-Control', 'no-cache');
+    }
+  },
+}));
+
+// SPA fallback — serve index.html for client-side routes ONLY. A request for a
+// missing /assets/* or /api/* path must fall through to a real 404 and never
+// receive index.html; otherwise the browser gets HTML where it expects JS/CSS/
+// JSON, which is the "MIME type not supported / unexpected 500" blank screen.
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api/') || req.path.startsWith('/assets/')) return next();
+  res.sendFile(path.join(clientDistPath, 'index.html'), (err) => {
+    if (err) next(err);
+  });
+});
+
+// 404 for anything that fell through (missing asset, unknown API route)
+app.use((req, res) => res.status(404).json({ error: 'Not found', code: 'NOT_FOUND' }));
+
+// Global error handler — registered LAST so it also catches errors thrown by
+// the routes and the static / SPA-fallback layer above it.
 app.use((err, req, res, _next) => {
   // SRV_001: Unhandled error that bubbled up through Express (next(err) call)
   console.error(`[server][SRV_001] Unhandled Express error on ${req.method} ${req.path}`);
@@ -284,11 +315,6 @@ app.use((err, req, res, _next) => {
   if (err.stack) console.error(err.stack);
   res.status(500).json({ error: 'Internal server error', code: 'SRV_001' });
 });
-
-// Serve built frontend in production
-const clientDistPath = path.join(__dirname, '../../client/dist');
-app.use(express.static(clientDistPath));
-app.get('*', (_req, res) => res.sendFile(path.join(clientDistPath, 'index.html')));
 
 const server = http.createServer(app);
 setupRoastWebSocket(server);
