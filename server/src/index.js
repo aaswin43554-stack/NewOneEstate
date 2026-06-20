@@ -69,14 +69,30 @@ app.use(express.static(clientDistPath, {
   },
 }));
 
-// Explicit CORS origin — never use `true` with credentials:true
+// Explicit CORS origin — never use `true` with credentials:true.
+// In production on Render, Express serves both API and frontend from the same
+// host, so the browser sends Origin: https://newoneestate.onrender.com for
+// every API call. We must allow it explicitly or every login/API call fails.
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
-  : [process.env.CLIENT_URL || 'http://localhost:5173'];
+  : [
+      process.env.CLIENT_URL || 'http://localhost:5173',
+      // Always allow same-host requests — the production URL where Express
+      // serves both the API and the built frontend from the same origin.
+      ...(process.env.RENDER_EXTERNAL_URL ? [process.env.RENDER_EXTERNAL_URL] : []),
+    ];
 app.use(cors({
   origin: (origin, cb) => {
-    // Same-origin requests (Render prod) have no Origin header — allow them
-    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    // No origin = same-origin navigation or curl — allow
+    if (!origin) return cb(null, true);
+    // Explicitly listed origin — allow
+    if (allowedOrigins.includes(origin)) return cb(null, true);
+    // Any request where the origin matches our own host — allow
+    // (covers cases where RENDER_EXTERNAL_URL is not set but the app is
+    //  accessed from the same Render URL it is served on)
+    const hostMatch = origin.replace(/^https?:\/\//, '') ===
+      (process.env.RENDER_EXTERNAL_URL || '').replace(/^https?:\/\//, '');
+    if (hostMatch) return cb(null, true);
     cb(new Error(`CORS: origin ${origin} not allowed`));
   },
   credentials: true,
