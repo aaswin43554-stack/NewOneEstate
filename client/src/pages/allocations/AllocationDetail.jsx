@@ -24,8 +24,6 @@ const STATE_LABELS = {
   upcoming:             'Upcoming',
   open_for_requests:    'Open for Requests',
   roasting_in_progress: 'Roasting in Progress',
-  resting:              'Resting',
-  dispatched:           'Dispatched',
   allocation_closed:    'Allocation Closed',
 };
 
@@ -33,17 +31,13 @@ const STATE_TO_STATUS = {
   upcoming:             'draft',
   open_for_requests:    'published',
   roasting_in_progress: 'under_review',
-  resting:              'under_review',
-  dispatched:           'published',
   allocation_closed:    'draft',
 };
 
 const NEXT_LABELS = {
   upcoming:             'Open for Requests',
   open_for_requests:    'Start Roasting',
-  roasting_in_progress: 'Mark Resting',
-  resting:              'Mark Dispatched',
-  dispatched:           'Close Allocation',
+  roasting_in_progress: 'Close Allocation',
 };
 
 const REQUEST_STATUS_MAP = {
@@ -71,9 +65,8 @@ export default function AllocationDetail() {
   const [transNotes,       setTransNotes]       = useState('');
   const [transSaving,      setTransSaving]      = useState(false);
   const [transError,       setTransError]       = useState('');
-  const [reqForm, setReqForm] = useState({
-    contact_name: '', contact_method: '', channel: 'WhatsApp', quantity_bags: 1, notes: '',
-  });
+  const [reqForm, setReqForm] = useState({ contact_id: '', quantity_bags: 1, notes: '' });
+  const [contacts,      setContacts]      = useState([]);
   const [reqOpen,       setReqOpen]       = useState(false);
   const [reqSaving,     setReqSaving]     = useState(false);
   const [reqError,      setReqError]      = useState('');
@@ -113,6 +106,14 @@ export default function AllocationDetail() {
 
   useEffect(load, [load]);
 
+  // Contacts list — requests are created by pulling a contact from here.
+  useEffect(() => {
+    api.get('/contacts')
+      .then(r => r.json())
+      .then(d => setContacts(d.contacts || []))
+      .catch(() => setContacts([]));
+  }, []);
+
   const loadJournal = useCallback(() => {
     setJournalLoading(true);
     api.get(`/journal/${id}`)
@@ -150,12 +151,19 @@ export default function AllocationDetail() {
 
   async function addRequest(e) {
     e.preventDefault();
+    if (!reqForm.contact_id) { setReqError('Please select a contact.'); return; }
+    const bags = parseInt(reqForm.quantity_bags, 10);
+    if (!Number.isInteger(bags) || bags < 1) { setReqError('Enter a valid number of bags.'); return; }
     setReqSaving(true); setReqError('');
-    const res = await api.post(`/allocations/${id}/requests`, reqForm);
+    const res = await api.post(`/allocations/${id}/requests`, {
+      contact_id:    reqForm.contact_id,
+      quantity_bags: bags,
+      notes:         reqForm.notes || undefined,
+    });
     const d = await res.json();
     if (res.ok) {
       setReqOpen(false);
-      setReqForm({ contact_name: '', contact_method: '', channel: 'WhatsApp', quantity_bags: 1, notes: '' });
+      setReqForm({ contact_id: '', quantity_bags: 1, notes: '' });
       load();
     } else { setReqError(d.error || 'Failed.'); }
     setReqSaving(false);
@@ -276,24 +284,23 @@ export default function AllocationDetail() {
           )}
           <div className="ml-auto flex gap-2">
             {isAdmin && !isClosed && (
-              <>
-                <button
-                  onClick={openEdit}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors"
-                  style={{ borderColor: '#E0D0BC', color: '#8B6A47' }}
-                >
-                  <Pencil size={12} /> Edit
-                </button>
-                {user?.role === 'admin' && (
-                  <button
-                    onClick={() => { setDeleteConfirm(''); setDeleteError(''); setDeleteOpen(true); }}
-                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors"
-                    style={{ borderColor: '#F3C0C0', color: '#A32D2D' }}
-                  >
-                    <Trash2 size={12} /> Delete
-                  </button>
-                )}
-              </>
+              <button
+                onClick={openEdit}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors"
+                style={{ borderColor: '#E0D0BC', color: '#8B6A47' }}
+              >
+                <Pencil size={12} /> Edit
+              </button>
+            )}
+            {/* Delete is available to admins in any state, including closed. */}
+            {user?.role === 'admin' && (
+              <button
+                onClick={() => { setDeleteConfirm(''); setDeleteError(''); setDeleteOpen(true); }}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors"
+                style={{ borderColor: '#F3C0C0', color: '#A32D2D' }}
+              >
+                <Trash2 size={12} /> Delete
+              </button>
             )}
             {user?.role === 'admin' && isClosed && !isArchived && (
               <button
@@ -375,53 +382,71 @@ export default function AllocationDetail() {
 
           {reqOpen && (
             <form onSubmit={addRequest} className="rounded-xl p-4 mb-4 space-y-3" style={{ background: '#FAF6F0', border: '1px solid #F2EAE0' }}>
-              <div className="grid grid-cols-2 gap-3">
-                <input
-                  value={reqForm.contact_name}
-                  placeholder="Contact name *"
-                  onChange={e => setReqForm(p => ({ ...p, contact_name: e.target.value }))}
-                  className="h-9 px-3 text-sm border border-coffee-200 rounded-lg"
-                  required
-                />
-                <input
-                  value={reqForm.contact_method}
-                  placeholder="WhatsApp / @handle / email *"
-                  onChange={e => setReqForm(p => ({ ...p, contact_method: e.target.value }))}
-                  className="h-9 px-3 text-sm border border-coffee-200 rounded-lg"
-                  required
-                />
-                <select
-                  value={reqForm.channel}
-                  onChange={e => setReqForm(p => ({ ...p, channel: e.target.value }))}
-                  className="h-9 px-3 text-sm border border-coffee-200 rounded-lg bg-white"
-                >
-                  {['WhatsApp', 'Instagram', 'Website', 'In_Person', 'Other'].map(c => <option key={c}>{c}</option>)}
-                </select>
-                <input
-                  type="number"
-                  min={1}
-                  value={reqForm.quantity_bags}
-                  placeholder="# bags *"
-                  onChange={e => setReqForm(p => ({ ...p, quantity_bags: parseInt(e.target.value) }))}
-                  className="h-9 px-3 text-sm border border-coffee-200 rounded-lg"
-                  required
-                />
-              </div>
-              <input
-                value={reqForm.notes}
-                placeholder="Notes (optional)"
-                onChange={e => setReqForm(p => ({ ...p, notes: e.target.value }))}
-                className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg"
-              />
-              {reqError && <p className="text-xs" style={{ color: '#A32D2D' }}>{reqError}</p>}
-              <div className="flex gap-2">
-                <Button type="submit" disabled={reqSaving} size="sm">
-                  {reqSaving ? 'Saving…' : 'Add'}
-                </Button>
-                <Button type="button" variant="ghost" size="sm" onClick={() => setReqOpen(false)}>
-                  Cancel
-                </Button>
-              </div>
+              {contacts.length === 0 ? (
+                <p className="text-sm text-coffee-500">
+                  No contacts yet.{' '}
+                  <Link to="/contacts/new" className="underline" style={{ color: '#3B6D11' }}>
+                    Add a contact
+                  </Link>{' '}
+                  first, then pull them into a request.
+                </p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-[1fr_120px] gap-3">
+                    <div>
+                      <label className="block text-xs text-coffee-500 mb-1">Contact *</label>
+                      <select
+                        value={reqForm.contact_id}
+                        onChange={e => setReqForm(p => ({ ...p, contact_id: e.target.value }))}
+                        className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg bg-white"
+                        required
+                      >
+                        <option value="">Select from contacts…</option>
+                        {contacts.map(c => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}{c.market_segment ? ` · ${c.market_segment}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-coffee-500 mb-1"># Bags *</label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={reqForm.quantity_bags}
+                        onChange={e => setReqForm(p => ({ ...p, quantity_bags: e.target.value }))}
+                        className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg"
+                        required
+                      />
+                    </div>
+                  </div>
+                  {(() => {
+                    const c = contacts.find(x => x.id === reqForm.contact_id);
+                    return c ? (
+                      <p className="text-xs text-coffee-400">
+                        {c.primary_contact_method || 'No contact method on file'}
+                        {c.preferred_channel ? ` · via ${c.preferred_channel}` : ''}
+                      </p>
+                    ) : null;
+                  })()}
+                  <input
+                    value={reqForm.notes}
+                    placeholder="Notes (optional)"
+                    onChange={e => setReqForm(p => ({ ...p, notes: e.target.value }))}
+                    className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg"
+                  />
+                  {reqError && <p className="text-xs" style={{ color: '#A32D2D' }}>{reqError}</p>}
+                  <div className="flex gap-2">
+                    <Button type="submit" disabled={reqSaving || !reqForm.contact_id} size="sm">
+                      {reqSaving ? 'Saving…' : 'Add'}
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setReqOpen(false)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </>
+              )}
             </form>
           )}
 
@@ -576,7 +601,7 @@ export default function AllocationDetail() {
         </div>
 
         {/* Label link */}
-        {(a.state === 'resting' || a.state === 'dispatched' || a.state === 'allocation_closed') && (
+        {(a.state === 'roasting_in_progress' || a.state === 'allocation_closed') && (
           <div className="bg-white border border-coffee-200 rounded-xl p-5 flex items-center justify-between">
             <p className="text-sm text-coffee-700">Bag Label</p>
             <Link to={`/labels/${a.id}`}>

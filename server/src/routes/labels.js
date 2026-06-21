@@ -1,7 +1,7 @@
 const express = require('express');
 const QRCode  = require('qrcode');
 const pool    = require('../config/db');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -38,7 +38,7 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/labels/generate — create or update a label
-router.post('/generate', async (req, res) => {
+router.post('/generate', requireRole('admin', 'roaster'), async (req, res) => {
   const tenant_id = req.user.tenant_id;
   const {
     allocation_id,
@@ -142,7 +142,7 @@ router.post('/generate', async (req, res) => {
 });
 
 // PUT /api/labels/:id — update label fields
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireRole('admin', 'roaster'), async (req, res) => {
   const tenant_id = req.user.tenant_id;
   const { rows: [label] } = await pool.query(
     `SELECT l.*, a.allocation_code, a.process, a.harvest_year
@@ -187,7 +187,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // DELETE /api/labels/:label_id — hard delete a label
-router.delete('/:label_id', async (req, res) => {
+router.delete('/:label_id', requireRole('admin'), async (req, res) => {
   const tenant_id = req.user.tenant_id;
   try {
     const { rows: [label] } = await pool.query(

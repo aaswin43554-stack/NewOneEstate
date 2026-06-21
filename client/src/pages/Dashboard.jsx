@@ -191,7 +191,11 @@ export default function Dashboard() {
         {stats?.activeAllocation && (
           <div
             className="flex items-center gap-3 mb-5 px-4 py-3 rounded-xl bg-white border border-coffee-200 cursor-pointer"
-            onClick={() => navigate('/roast')}
+            onClick={() => navigate(
+              stats.activeAllocation.id
+                ? `/allocations/${stats.activeAllocation.id}`
+                : '/allocations'
+            )}
           >
             <span
               className="w-2 h-2 rounded-full flex-shrink-0"

@@ -8,8 +8,6 @@ const KANBAN_COLUMNS = [
   { key: 'upcoming',             label: 'Upcoming',              states: ['upcoming'] },
   { key: 'open_for_requests',    label: 'Open for Requests',     states: ['open_for_requests'] },
   { key: 'roasting_in_progress', label: 'Roasting in Progress',  states: ['roasting_in_progress'] },
-  { key: 'resting',              label: 'Resting',               states: ['resting'] },
-  { key: 'dispatched',           label: 'Dispatched',            states: ['dispatched'] },
   { key: 'allocation_closed',    label: 'Closed',                states: ['allocation_closed'] },
 ];
 
@@ -17,8 +15,6 @@ const STATE_TO_STATUS = {
   upcoming:             'draft',
   open_for_requests:    'published',
   roasting_in_progress: 'under_review',
-  resting:              'under_review',
-  dispatched:           'published',
   allocation_closed:    'draft',
 };
 
@@ -26,8 +22,6 @@ const STATE_LABELS = {
   upcoming:             'Upcoming',
   open_for_requests:    'Open for Requests',
   roasting_in_progress: 'Roasting in Progress',
-  resting:              'Resting',
-  dispatched:           'Dispatched',
   allocation_closed:    'Allocation Closed',
 };
 
@@ -35,8 +29,6 @@ const COLUMN_ACCENT = {
   upcoming:             '#8B6A47',
   open_for_requests:    '#3B6D11',
   roasting_in_progress: '#BA7517',
-  resting:              '#1E6BA1',
-  dispatched:           '#6B21A8',
   allocation_closed:    '#533A24',
 };
 

@@ -1,6 +1,7 @@
 const express = require('express');
 const pool    = require('../config/db');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { validateInts } = require('../utils/validate');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -147,6 +148,14 @@ router.post('/', requireRole('admin', 'roaster'), async (req, res) => {
     return res.status(400).json({ error: 'All fields are required for manual profile creation.' });
   }
 
+  const vProfile = validateInts(req.body, [
+    { key: 'harvest_year',        label: 'Harvest year',          min: 1900, max: 2200 },
+    { key: 'charge_temp_c',       label: 'Charge temp (°C)',      min: 0, max: 1000 },
+    { key: 'eject_temp_c',        label: 'Eject temp (°C)',       min: 0, max: 1000 },
+    { key: 'total_time_target_s', label: 'Total time target (s)', min: 1, max: 86400 },
+  ]);
+  if (!vProfile.ok) return res.status(400).json({ error: vProfile.error });
+
   try {
     const { rows: [profile] } = await pool.query(
       `INSERT INTO oec_roast_profiles
@@ -228,7 +237,7 @@ router.post('/:id/submit', requireRole('admin', 'roaster'), async (req, res) => 
 });
 
 // POST /api/profiles/:id/approve
-router.post('/:id/approve', async (req, res) => {
+router.post('/:id/approve', requireRole('admin', 'roaster'), async (req, res) => {
   if (req.user.role !== 'admin') {
     return res.status(403).json({ error: 'Only admins can approve profiles.' });
   }
@@ -258,7 +267,7 @@ router.post('/:id/approve', async (req, res) => {
 });
 
 // POST /api/profiles/:id/retire
-router.post('/:id/retire', async (req, res) => {
+router.post('/:id/retire', requireRole('admin', 'roaster'), async (req, res) => {
   if (req.user.role !== 'admin') {
     return res.status(403).json({ error: 'Only admins can retire profiles.' });
   }

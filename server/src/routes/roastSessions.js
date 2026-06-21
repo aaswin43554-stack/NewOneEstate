@@ -2,6 +2,7 @@ const express = require('express');
 const pool    = require('../config/db');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { generateBatchCode, PROCESS_CODE } = require('../services/batchCodeService');
+const { validateInts } = require('../utils/validate');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -33,9 +34,10 @@ router.post('/', requireRole('admin', 'roaster'), async (req, res) => {
   if (!charge_temp_c || isNaN(parseFloat(charge_temp_c))) {
     return res.status(400).json({ error: 'charge_temp_c is required and must be a number.' });
   }
-  if (!green_weight_in_g || green_weight_in_g <= 0) {
-    return res.status(400).json({ error: 'green_weight_in_g must be a positive integer.' });
-  }
+  const vStart = validateInts(req.body, [
+    { key: 'green_weight_in_g', label: 'Green weight (g)', min: 1, required: true },
+  ]);
+  if (!vStart.ok) return res.status(400).json({ error: vStart.error });
   if (is_development && !VALID_PROCESSES.includes(process)) {
     return res.status(400).json({ error: 'process is required for development sessions.' });
   }
@@ -136,6 +138,17 @@ router.put('/:id/complete', requireRole('admin', 'roaster'), async (req, res) =>
   if (parseInt(development_time_seconds) > parseInt(total_time_seconds)) {
     return res.status(400).json({ error: 'Development time cannot exceed total time.' });
   }
+
+  // Guard numeric fields against INTEGER overflow before the DB write.
+  const vRoast = validateInts(req.body, [
+    { key: 'roasted_weight_out_g',     label: 'Roasted weight (g)',     min: 1 },
+    { key: 'total_time_seconds',       label: 'Total time (s)',         min: 1, max: 86400 },
+    { key: 'development_time_seconds', label: 'Development time (s)',    min: 1, max: 86400 },
+    { key: 'tp_time_seconds',          label: 'Turning-point time (s)', min: 0, max: 86400 },
+    { key: 'yellow_time_seconds',      label: 'Yellow time (s)',        min: 0, max: 86400 },
+    { key: 'first_crack_time_seconds', label: 'First-crack time (s)',   min: 0, max: 86400 },
+  ]);
+  if (!vRoast.ok) return res.status(400).json({ error: vRoast.error });
 
   const dtr = Math.round((parseInt(development_time_seconds) / parseInt(total_time_seconds)) * 10000) / 100;
 
@@ -253,7 +266,7 @@ router.put('/:id/status', async (req, res) => {
 });
 
 // POST /api/roast-sessions/:id/notes
-router.post('/:id/notes', async (req, res) => {
+router.post('/:id/notes', requireRole('admin', 'roaster'), async (req, res) => {
   const { id } = req.params;
   const tenant_id = req.user.tenant_id;
   const { note_text, roast_position_s } = req.body;

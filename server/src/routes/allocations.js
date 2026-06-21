@@ -16,8 +16,20 @@ const {
   generateAllocationCode, getNextState,
   checkTransitionPreconditions,
 } = require('../services/allocationService');
+const { validateInts } = require('../utils/validate');
 
 const router = express.Router();
+
+// Request channels accepted by the oec_allocation_requests CHECK constraint.
+const ALLOWED_CHANNELS = ['WhatsApp', 'Instagram', 'Website', 'In_Person', 'Other'];
+
+// Map a contact's free-text preferred_channel onto a valid request channel.
+// Returns null when there is no confident match so callers can fall back.
+function normalizeChannel(raw) {
+  if (!raw) return null;
+  const key = String(raw).toLowerCase().replace(/[\s_]+/g, '');
+  return ALLOWED_CHANNELS.find(c => c.toLowerCase().replace(/[\s_]+/g, '') === key) || null;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/allocations/sync-from-admin  (NO JWT — uses webhook secret auth)
@@ -46,7 +58,7 @@ router.post('/sync-from-admin', async (req, res) => {
     return res.status(400).json({ error: 'Missing required sync fields.' });
   }
 
-  const VALID_STATES = ['upcoming', 'open_for_requests', 'roasting_in_progress', 'resting', 'dispatched', 'allocation_closed'];
+  const VALID_STATES = ['upcoming', 'open_for_requests', 'roasting_in_progress', 'allocation_closed'];
   if (!VALID_STATES.includes(state)) {
     return res.status(400).json({ error: `Invalid state: ${state}` });
   }
@@ -154,6 +166,13 @@ router.post('/', requireRole('admin', 'roaster'), async (req, res) => {
     return res.status(400).json({ error: 'Missing required fields.' });
   }
 
+  const vCreate = validateInts(req.body, [
+    { key: 'harvest_year',             label: 'Harvest year',                min: 1900, max: 2200 },
+    { key: 'planned_green_quantity_g', label: 'Planned green quantity (g)',  min: 1 },
+    { key: 'planned_bag_size_g',       label: 'Planned bag size (g)',        min: 1 },
+  ]);
+  if (!vCreate.ok) return res.status(400).json({ error: vCreate.error });
+
   const closeDate = window_close_date
     ? new Date(window_close_date)
     : (() => { const d = new Date(window_open_date); d.setDate(d.getDate() + 5); return d; })();
@@ -213,6 +232,12 @@ router.put('/:id', requireRole('admin', 'roaster'), async (req, res) => {
   }
 
   const { estate, planned_green_quantity_g, planned_bag_size_g, planned_price_json, window_open_date, window_close_date } = req.body;
+
+  const vEdit = validateInts(req.body, [
+    { key: 'planned_green_quantity_g', label: 'Planned green quantity (g)', min: 1 },
+    { key: 'planned_bag_size_g',       label: 'Planned bag size (g)',       min: 1 },
+  ]);
+  if (!vEdit.ok) return res.status(400).json({ error: vEdit.error });
 
   try {
     const { rows: [updated] } = await pool.query(
@@ -393,22 +418,59 @@ router.post('/:id/requests', requireRole('admin', 'roaster'), async (req, res) =
     });
   }
 
-  const { contact_name, contact_method, channel, quantity_bags, notes } = req.body;
-  if (!contact_name || !contact_method || !channel || !quantity_bags) {
-    return res.status(400).json({ error: 'contact_name, contact_method, channel, and quantity_bags are required.' });
+  let { contact_id, contact_name, contact_method, channel, quantity_bags, notes } = req.body;
+
+  // Preferred flow: a contact is pulled from the Contacts list. Derive the
+  // name / method / channel from that record so they are always consistent.
+  if (contact_id) {
+    const { rows: [contact] } = await pool.query(
+      'SELECT * FROM oec_contacts WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
+      [contact_id, tenant_id]
+    );
+    if (!contact) return res.status(404).json({ error: 'Selected contact not found.' });
+    contact_name   = contact.name;
+    contact_method = contact.primary_contact_method || contact_method || '—';
+    channel        = normalizeChannel(contact.preferred_channel) || channel || 'Other';
   }
 
+  // Validate the bag count up-front. A non-integer or out-of-range value (e.g. a
+  // phone number typed into the field) would otherwise overflow the INTEGER
+  // column and surface as an opaque "Failed to add request" 500.
+  const bags = Number(quantity_bags);
+  if (!Number.isInteger(bags) || bags < 1 || bags > 1000000) {
+    return res.status(400).json({ error: 'Number of bags must be a whole number between 1 and 1,000,000.' });
+  }
+
+  if (!contact_name || !contact_method || !channel) {
+    return res.status(400).json({ error: 'A contact (name, method, channel) and quantity_bags are required.' });
+  }
+  if (!ALLOWED_CHANNELS.includes(channel)) channel = 'Other';
+
+  const client = await pool.connect();
   try {
-    const { rows: [request] } = await pool.query(
+    await client.query('BEGIN');
+    const { rows: [request] } = await client.query(
       `INSERT INTO oec_allocation_requests
          (tenant_id, allocation_id, contact_name, contact_method, channel, quantity_bags, notes, created_by, updated_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8) RETURNING *`,
-      [tenant_id, alloc.id, contact_name, contact_method, channel, parseInt(quantity_bags), notes || null, req.user.id]
+      [tenant_id, alloc.id, contact_name, contact_method, channel, bags, notes || null, req.user.id]
     );
+    // Link the request back to the contact so it shows in their purchase history.
+    if (contact_id) {
+      await client.query(
+        `INSERT INTO oec_contact_request_links (tenant_id, contact_id, allocation_request_id, created_by)
+         VALUES ($1,$2,$3,$4) ON CONFLICT (contact_id, allocation_request_id) DO NOTHING`,
+        [tenant_id, contact_id, request.id, req.user.id]
+      );
+    }
+    await client.query('COMMIT');
     return res.status(201).json({ request });
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     console.error('Add request:', err);
     return res.status(500).json({ error: 'Failed to add request.' });
+  } finally {
+    client.release();
   }
 });
 

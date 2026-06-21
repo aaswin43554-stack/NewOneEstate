@@ -25,7 +25,7 @@ router.post(
     body('process').isIn(['Washed', 'Honey', 'Natural', 'Anaerobic']).withMessage('Invalid process'),
     body('harvest_year').isInt({ min: 2000, max: 2100 }).withMessage('Invalid harvest_year'),
     body('arrival_date').isISO8601().withMessage('Invalid arrival_date'),
-    body('arrival_weight_g').isInt({ min: 1 }).withMessage('arrival_weight_g must be a positive integer'),
+    body('arrival_weight_g').isInt({ min: 1, max: 2147483647 }).withMessage('arrival_weight_g must be a positive integer within range'),
     body('storage_location').trim().notEmpty().withMessage('storage_location is required'),
     body('moisture_content').optional({ nullable: true }).isFloat({ min: 0, max: 100 }),
     body('water_activity').optional({ nullable: true }).isFloat({ min: 0, max: 1 }),
@@ -231,7 +231,7 @@ router.post(
   [
     param('id').isUUID(),
     body('movement_type').isIn(['sales', 'profile_development', 'personal_use', 'write_off']),
-    body('weight_change_g').isInt().withMessage('weight_change_g must be a non-zero integer'),
+    body('weight_change_g').isInt({ min: -2147483647, max: 2147483647 }).withMessage('weight_change_g must be a non-zero integer within range'),
     body('reason').optional({ nullable: true }).isString(),
   ],
   async (req, res) => {

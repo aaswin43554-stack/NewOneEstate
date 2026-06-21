@@ -69,7 +69,9 @@ export default function AllocationAddRequest() {
       setError('Please fill in all fields.'); return;
     }
     setSaving(true); setError('');
-    const res = await api.post(`/allocations/${id}/requests`, form);
+    const payload = { ...form };
+    if (selectedContact?.id) payload.contact_id = selectedContact.id;
+    const res = await api.post(`/allocations/${id}/requests`, payload);
     const d   = await res.json();
     if (res.ok) {
       setSuccess({ name: form.contact_name, bags: form.quantity_bags });

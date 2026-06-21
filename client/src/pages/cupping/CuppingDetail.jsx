@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
+import { Trash2 } from 'lucide-react';
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis,
   PolarRadiusAxis, ResponsiveContainer, Tooltip,
 } from 'recharts';
 import Layout from '../../components/Layout';
 import { api } from '../../lib/api';
+import { useAuth } from '../../lib/auth';
 import { Button, FormTextarea } from '../../components/ui';
 
 const TZ = 'Asia/Vientiane';
@@ -96,12 +98,18 @@ function CupCheckGrid({ label, cups, score }) {
 
 export default function CuppingDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [session,     setSession]     = useState(null);
   const [samples,     setSamples]     = useState([]);
   const [loading,     setLoading]     = useState(true);
   const [draft,       setDraft]       = useState('');
   const [draftSaving, setDraftSaving] = useState(false);
   const [lastSaved,   setLastSaved]   = useState(null);
+  const [deleteOpen,  setDeleteOpen]  = useState(false);
+  const [deleting,    setDeleting]    = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   function load() {
     setLoading(true);
@@ -122,6 +130,17 @@ export default function CuppingDetail() {
     await api.put(`/cupping-sessions/${id}/samples/${samples[0].id}`, { journal_draft: draft });
     setLastSaved(new Date());
     setDraftSaving(false);
+  }
+
+  async function confirmDelete() {
+    setDeleting(true); setDeleteError('');
+    const res = await api.delete(`/cupping-sessions/${id}`);
+    if (res.ok) { navigate('/cupping'); }
+    else {
+      const d = await res.json().catch(() => ({}));
+      setDeleteError(d.error || 'Failed to delete.');
+      setDeleting(false);
+    }
   }
 
   if (loading) return <Layout><div className="px-6 py-6 text-sm text-coffee-400">Loading…</div></Layout>;
@@ -176,6 +195,15 @@ export default function CuppingDetail() {
             <span className="text-xs px-2 py-0.5 rounded" style={{ background: '#FAEEDA', color: '#BA7517' }}>
               Legacy 70-pt
             </span>
+          )}
+          {isAdmin && (
+            <button
+              onClick={() => { setDeleteError(''); setDeleteOpen(true); }}
+              className="ml-auto flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors"
+              style={{ borderColor: '#F3C0C0', color: '#A32D2D' }}
+            >
+              <Trash2 size={12} /> Delete
+            </button>
           )}
         </div>
 
@@ -371,6 +399,25 @@ export default function CuppingDetail() {
           </div>
         )}
       </div>
+
+      {/* Delete cupping session modal */}
+      {deleteOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(34,21,8,0.2)' }}>
+          <div className="bg-white rounded-2xl border border-coffee-200 w-full max-w-sm p-6">
+            <h2 className="text-base text-coffee-900 mb-2" style={{ fontWeight: 500 }}>Delete Cupping Session</h2>
+            <p className="text-sm text-coffee-600 mb-4">
+              This will permanently remove the cupping session from {fmtDate(session.cupping_date)} and its scores. This cannot be undone.
+            </p>
+            {deleteError && <p className="text-xs mb-3" style={{ color: '#A32D2D' }}>{deleteError}</p>}
+            <div className="flex gap-3">
+              <Button onClick={confirmDelete} disabled={deleting} className="flex-1 justify-center" variant="destructive">
+                {deleting ? 'Deleting…' : 'Delete'}
+              </Button>
+              <Button variant="secondary" onClick={() => setDeleteOpen(false)}>Cancel</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }

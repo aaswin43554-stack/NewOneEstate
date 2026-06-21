@@ -1,6 +1,6 @@
 const express = require('express');
 const pool    = require('../config/db');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRole } = require('../middleware/auth');
 const {
   getProcessFromSession, generateJournalDraft,
   calcCupCheckScore, calcTotalDefects, REST_DAYS,
@@ -120,7 +120,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /api/cupping-sessions
-router.post('/', async (req, res) => {
+router.post('/', requireRole('admin', 'roaster'), async (req, res) => {
   const tenant_id = req.user.tenant_id;
   const { roast_session_id, cupping_date, cupping_purpose, session_notes, number_of_cups } = req.body;
   if (!roast_session_id || !cupping_date || !cupping_purpose) {
@@ -169,7 +169,7 @@ router.post('/', async (req, res) => {
 });
 
 // POST /api/cupping-sessions/:id/samples
-router.post('/:id/samples', async (req, res) => {
+router.post('/:id/samples', requireRole('admin', 'roaster'), async (req, res) => {
   const tenant_id = req.user.tenant_id;
   const { rows: [cuppingSession] } = await pool.query(
     'SELECT * FROM oec_cupping_sessions WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
@@ -285,7 +285,7 @@ router.post('/:id/samples', async (req, res) => {
 });
 
 // PUT /api/cupping-sessions/:id/samples/:sample_id
-router.put('/:id/samples/:sample_id', async (req, res) => {
+router.put('/:id/samples/:sample_id', requireRole('admin', 'roaster'), async (req, res) => {
   const tenant_id = req.user.tenant_id;
   const { rows: [cs] } = await pool.query(
     'SELECT * FROM oec_cupping_sessions WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
@@ -385,6 +385,27 @@ router.put('/:id/samples/:sample_id', async (req, res) => {
   } catch (err) {
     console.error('Update cupping sample:', err);
     return res.status(500).json({ error: 'Failed to update sample.' });
+  }
+});
+
+// DELETE /api/cupping-sessions/:id  (soft delete, admin only)
+router.delete('/:id', requireRole('admin'), async (req, res) => {
+  const tenant_id = req.user.tenant_id;
+  try {
+    const { rows: [session] } = await pool.query(
+      'SELECT id FROM oec_cupping_sessions WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
+      [req.params.id, tenant_id]
+    );
+    if (!session) return res.status(404).json({ error: 'Cupping session not found.' });
+
+    await pool.query(
+      'UPDATE oec_cupping_sessions SET deleted_at = NOW(), updated_at = NOW(), updated_by = $1 WHERE id = $2',
+      [req.user.id, session.id]
+    );
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('Delete cupping session:', err);
+    return res.status(500).json({ error: 'Failed to delete cupping session.' });
   }
 });
 

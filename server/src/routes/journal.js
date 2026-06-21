@@ -172,7 +172,7 @@ async function buildAllocationRecordDraft(allocation, tenant_id) {
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 // POST /api/journal/generate/:allocation_id  — must be before /:allocation_id GET
-router.post('/generate/:allocation_id', async (req, res) => {
+router.post('/generate/:allocation_id', requireRole('admin', 'roaster'), async (req, res) => {
   const tenant_id = req.user.tenant_id;
   const { allocation_id } = req.params;
 
@@ -314,7 +314,7 @@ router.get('/:allocation_id', async (req, res) => {
 });
 
 // PUT /api/journal/:id  — save draft content
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireRole('admin', 'roaster'), async (req, res) => {
   const tenant_id = req.user.tenant_id;
   const { draft_content } = req.body;
 
@@ -341,7 +341,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // POST /api/journal/:id/submit  — draft → under_review
-router.post('/:id/submit', async (req, res) => {
+router.post('/:id/submit', requireRole('admin', 'roaster'), async (req, res) => {
   const tenant_id = req.user.tenant_id;
   const { rows: [entry] } = await pool.query(
     'SELECT * FROM oec_journal_entries WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',

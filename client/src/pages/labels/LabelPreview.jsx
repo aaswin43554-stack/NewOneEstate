@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Layout from '../../components/Layout';
 import { api } from '../../lib/api';
+import { useAuth } from '../../lib/auth';
 import { Button, FormInput } from '../../components/ui';
-import { Printer, Save, Upload, ArrowLeft } from 'lucide-react';
+import { Printer, Save, Upload, ArrowLeft, Trash2 } from 'lucide-react';
 
 const PROCESS_LABEL = {
   Washed:    'Washed Process',
@@ -64,6 +65,8 @@ export default function LabelPreview() {
   const { allocation_id } = useParams();
   const navigate          = useNavigate();
   const fileRef           = useRef(null);
+  const { user }          = useAuth();
+  const isAdmin           = user?.role === 'admin';
 
   const [label,      setLabel]      = useState(null);
   const [alloc,      setAlloc]      = useState(null);
@@ -74,6 +77,8 @@ export default function LabelPreview() {
   const [saved,      setSaved]      = useState(false);
   const [error,      setError]      = useState('');
   const [form,       setForm]       = useState(INIT_FORM);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting,   setDeleting]   = useState(false);
 
   function syncForm(lbl) {
     setForm({
@@ -134,6 +139,19 @@ export default function LabelPreview() {
     setSaving(false);
   }
 
+  async function confirmDelete() {
+    if (!label) return;
+    setDeleting(true); setError('');
+    const res = await api.delete(`/labels/${label.id}`);
+    if (res.ok) { navigate('/labels'); }
+    else {
+      const d = await res.json().catch(() => ({}));
+      setError(d.error || 'Failed to delete label.');
+      setDeleting(false);
+      setDeleteOpen(false);
+    }
+  }
+
   function handleImageUpload(e) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -165,6 +183,11 @@ export default function LabelPreview() {
               <Button variant="primary" onClick={save} disabled={saving}>
                 <Save size={13} /> {saving ? 'Saving…' : saved ? 'Saved' : 'Save'}
               </Button>
+              {isAdmin && (
+                <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
+                  <Trash2 size={13} /> Delete
+                </Button>
+              )}
             </div>
           )}
         </div>
@@ -223,6 +246,24 @@ export default function LabelPreview() {
           <p className="text-xs mt-4 text-center" style={{ color: '#A32D2D' }}>{error}</p>
         )}
       </div>
+
+      {/* Delete label modal */}
+      {deleteOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(34,21,8,0.2)' }}>
+          <div className="bg-white rounded-2xl border border-coffee-200 w-full max-w-sm p-6">
+            <h3 className="text-base text-coffee-900 mb-2" style={{ fontWeight: 500 }}>Delete Label</h3>
+            <p className="text-sm text-coffee-600 mb-5">
+              This will remove the label for this allocation. You can recreate it at any time.
+            </p>
+            <div className="flex gap-3">
+              <Button onClick={confirmDelete} disabled={deleting} className="flex-1 justify-center" variant="destructive">
+                {deleting ? 'Deleting…' : 'Delete'}
+              </Button>
+              <Button variant="secondary" onClick={() => setDeleteOpen(false)}>Cancel</Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Print CSS */}
       <style>{`

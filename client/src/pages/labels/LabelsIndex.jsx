@@ -212,18 +212,21 @@ export default function LabelsIndex() {
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
             {displayed.map(a => (
-              <button
+              <div
                 key={a.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => navigate(`/labels/${a.id}`)}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/labels/${a.id}`); } }}
                 className="text-left hover:scale-[1.02] transition-transform"
-                style={{ cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}
+                style={{ cursor: 'pointer' }}
               >
                 <MiniLabel
                   a={a}
                   isAdmin={isAdmin}
                   onDelete={() => setDeleteConfirm({ labelId: a.label_id, allocationId: a.id })}
                 />
-              </button>
+              </div>
             ))}
           </div>
         )}
