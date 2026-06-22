@@ -237,12 +237,6 @@ router.put('/:id/status', async (req, res) => {
     console.warn(`[roastSessions] is_development field ignored in status update for session ${id}`);
   }
 
-  if (newStatus === 'approved_for_bagging' && session.is_development) {
-    return res.status(400).json({
-      error: 'Development sessions cannot be approved for bagging. Mark as rejected or create a production session.',
-    });
-  }
-
   const allowedTransitions = {
     completed: ['approved_for_bagging', 'rejected'],
   };

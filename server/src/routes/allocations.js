@@ -157,19 +157,48 @@ function closedGuard(allocation, res) {
 router.post('/', requireRole('admin', 'roaster'), async (req, res) => {
   const tenant_id = req.user.tenant_id;
   const {
-    lot_id, estate, process, harvest_year,
+    lot_id, lots, estate, process, harvest_year,
     planned_green_quantity_g, planned_bag_size_g,
     planned_price_json, window_open_date, window_close_date,
   } = req.body;
 
-  if (!lot_id || !estate || !process || !harvest_year || !planned_green_quantity_g || !planned_bag_size_g || !planned_price_json || !window_open_date) {
+  // An allocation can draw green from one or many lots. Normalise both the
+  // legacy single-lot payload ({ lot_id, planned_green_quantity_g }) and the
+  // multi-lot payload ({ lots: [{ lot_id, green_quantity_g }] }) into one list.
+  let lotList;
+  if (Array.isArray(lots) && lots.length > 0) {
+    lotList = lots.map(l => ({ lot_id: l.lot_id, green_quantity_g: Number(l.green_quantity_g) }));
+  } else if (lot_id && planned_green_quantity_g) {
+    lotList = [{ lot_id, green_quantity_g: Number(planned_green_quantity_g) }];
+  } else {
+    lotList = [];
+  }
+
+  if (!lotList.length) {
+    return res.status(400).json({ error: 'At least one green lot is required.' });
+  }
+  for (const l of lotList) {
+    if (!l.lot_id) return res.status(400).json({ error: 'Each lot must have a lot_id.' });
+    if (!Number.isInteger(l.green_quantity_g) || l.green_quantity_g < 1 || l.green_quantity_g > 2147483647) {
+      return res.status(400).json({ error: 'Each lot must have a whole-number green quantity (g) of at least 1.' });
+    }
+  }
+  // Reject the same lot twice — the junction table has a UNIQUE (allocation_id, lot_id).
+  const uniqueLotIds = new Set(lotList.map(l => l.lot_id));
+  if (uniqueLotIds.size !== lotList.length) {
+    return res.status(400).json({ error: 'The same lot cannot be added more than once.' });
+  }
+
+  const totalGreenG  = lotList.reduce((sum, l) => sum + l.green_quantity_g, 0);
+  const primaryLotId = lotList[0].lot_id;
+
+  if (!estate || !process || !harvest_year || !planned_bag_size_g || !planned_price_json || !window_open_date) {
     return res.status(400).json({ error: 'Missing required fields.' });
   }
 
   const vCreate = validateInts(req.body, [
-    { key: 'harvest_year',             label: 'Harvest year',                min: 1900, max: 2200 },
-    { key: 'planned_green_quantity_g', label: 'Planned green quantity (g)',  min: 1 },
-    { key: 'planned_bag_size_g',       label: 'Planned bag size (g)',        min: 1 },
+    { key: 'harvest_year',       label: 'Harvest year',         min: 1900, max: 2200 },
+    { key: 'planned_bag_size_g', label: 'Planned bag size (g)', min: 1 },
   ]);
   if (!vCreate.ok) return res.status(400).json({ error: vCreate.error });
 
@@ -181,14 +210,15 @@ router.post('/', requireRole('admin', 'roaster'), async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // Verify lot belongs to this tenant (IDOR guard)
+    // Verify every lot belongs to this tenant (IDOR guard)
+    const lotIds = lotList.map(l => l.lot_id);
     const { rows: lotCheck } = await client.query(
-      'SELECT 1 FROM oec_lots WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
-      [lot_id, tenant_id]
+      'SELECT id FROM oec_lots WHERE id = ANY($1::uuid[]) AND tenant_id = $2 AND deleted_at IS NULL',
+      [lotIds, tenant_id]
     );
-    if (!lotCheck.length) {
+    if (lotCheck.length !== lotIds.length) {
       await client.query('ROLLBACK');
-      return res.status(404).json({ error: 'Lot not found.' });
+      return res.status(404).json({ error: 'One or more lots were not found.' });
     }
 
     const allocation_code = await generateAllocationCode(tenant_id, client);
@@ -200,13 +230,22 @@ router.post('/', requireRole('admin', 'roaster'), async (req, res) => {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'upcoming','manual',$12,$12)
        RETURNING *`,
       [
-        tenant_id, allocation_code, lot_id, estate, process, parseInt(harvest_year),
-        parseInt(planned_green_quantity_g), parseInt(planned_bag_size_g),
+        tenant_id, allocation_code, primaryLotId, estate, process, parseInt(harvest_year),
+        totalGreenG, parseInt(planned_bag_size_g),
         JSON.stringify(planned_price_json),
         window_open_date, closeDate.toISOString().split('T')[0],
         req.user.id,
       ]
     );
+
+    for (const l of lotList) {
+      await client.query(
+        `INSERT INTO oec_allocation_lots (tenant_id, allocation_id, lot_id, green_quantity_g)
+         VALUES ($1, $2, $3, $4)`,
+        [tenant_id, alloc.id, l.lot_id, l.green_quantity_g]
+      );
+    }
+
     await client.query('COMMIT');
     return res.status(201).json({ allocation: alloc });
   } catch (err) {
@@ -291,34 +330,46 @@ router.put('/:id/transition', requireRole('admin', 'roaster'), async (req, res) 
   try {
     await client.query('BEGIN');
 
-    // Auto-reserve green stock when opening for requests (skip if already reserved)
-    if (next_state === 'open_for_requests' && alloc.lot_id) {
-      const { rows: existing } = await client.query(
-        `SELECT id FROM oec_lot_movements
-         WHERE lot_id = $1 AND movement_type = 'reservation'
-           AND reason = $2`,
-        [alloc.lot_id, `Auto-reserved for allocation ${alloc.allocation_code}`]
+    // Auto-reserve green stock when opening for requests (skip lots already reserved).
+    // An allocation may span several lots — reserve each lot's share independently.
+    if (next_state === 'open_for_requests') {
+      const { rows: allocLots } = await client.query(
+        'SELECT lot_id, green_quantity_g FROM oec_allocation_lots WHERE allocation_id = $1',
+        [alloc.id]
       );
-      if (existing.length === 0) {
+      // Fall back to the legacy single-lot column for allocations created before
+      // the junction table existed (e.g. synced from the One Estate admin).
+      const lotsToReserve = allocLots.length > 0
+        ? allocLots
+        : (alloc.lot_id ? [{ lot_id: alloc.lot_id, green_quantity_g: alloc.planned_green_quantity_g }] : []);
+
+      const reason = `Auto-reserved for allocation ${alloc.allocation_code}`;
+      for (const { lot_id, green_quantity_g } of lotsToReserve) {
+        const { rows: existing } = await client.query(
+          `SELECT id FROM oec_lot_movements
+           WHERE lot_id = $1 AND movement_type = 'reservation' AND reason = $2`,
+          [lot_id, reason]
+        );
+        if (existing.length > 0) continue;
+
         const { rows: [lot] } = await client.query(
           'SELECT current_weight_g FROM oec_lots WHERE id = $1 FOR UPDATE',
-          [alloc.lot_id]
+          [lot_id]
         );
-        const newWeight = lot.current_weight_g - alloc.planned_green_quantity_g;
+        const newWeight = lot.current_weight_g - green_quantity_g;
         if (newWeight < 0) {
           await client.query('ROLLBACK');
           return res.status(400).json({ error: 'Insufficient green stock to reserve.' });
         }
         await client.query(
           'UPDATE oec_lots SET current_weight_g = $1, updated_at = NOW(), updated_by = $2 WHERE id = $3',
-          [newWeight, req.user.id, alloc.lot_id]
+          [newWeight, req.user.id, lot_id]
         );
         await client.query(
           `INSERT INTO oec_lot_movements
              (tenant_id, lot_id, movement_type, weight_change_g, reason, authorised_by, created_by)
            VALUES ($1, $2, 'reservation', $3, $4, $5, $5)`,
-          [tenant_id, alloc.lot_id, -alloc.planned_green_quantity_g,
-           `Auto-reserved for allocation ${alloc.allocation_code}`, req.user.id]
+          [tenant_id, lot_id, -green_quantity_g, reason, req.user.id]
         );
       }
     }
@@ -650,6 +701,7 @@ router.get('/:id', async (req, res) => {
     { rows: stateLogs },
     { rows: sessions },
     { rows: [lotRow] },
+    { rows: allocLots },
   ] = await Promise.all([
     pool.query(
       'SELECT * FROM oec_allocation_requests WHERE allocation_id = $1 ORDER BY requested_at ASC',
@@ -672,6 +724,15 @@ router.get('/:id', async (req, res) => {
       'SELECT id, lot_code, estate, process, harvest_year, current_weight_g FROM oec_lots WHERE id = $1',
       [alloc.lot_id]
     ),
+    pool.query(
+      `SELECT al.lot_id, al.green_quantity_g,
+              l.lot_code, l.estate, l.process, l.harvest_year, l.current_weight_g
+       FROM oec_allocation_lots al
+       JOIN oec_lots l ON l.id = al.lot_id
+       WHERE al.allocation_id = $1
+       ORDER BY al.created_at ASC`,
+      [alloc.id]
+    ),
   ]);
 
   const { rows: [aggRow] } = await pool.query(
@@ -680,9 +741,16 @@ router.get('/:id', async (req, res) => {
     [alloc.id]
   );
 
+  // Fall back to the legacy single-lot column for allocations created before
+  // the junction table existed (or synced from the One Estate admin).
+  const lots = allocLots.length > 0
+    ? allocLots
+    : (lotRow ? [{ ...lotRow, lot_id: lotRow.id, green_quantity_g: alloc.planned_green_quantity_g }] : []);
+
   return res.json({
     allocation: alloc,
     lot: lotRow || null,
+    lots,
     requests,
     state_log: stateLogs,
     roast_sessions: sessions,

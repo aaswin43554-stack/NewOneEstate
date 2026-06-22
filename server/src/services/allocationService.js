@@ -69,9 +69,23 @@ function getNextState(current_state) {
   return STATE_SEQUENCE[idx + 1];
 }
 
+// Return the lots an allocation draws green from, as [{ lot_id, green_quantity_g }].
+// Falls back to the legacy single-lot column for allocations created before the
+// oec_allocation_lots junction table existed (e.g. synced from One Estate admin).
+async function getAllocationLots(allocation) {
+  const { rows } = await pool.query(
+    'SELECT lot_id, green_quantity_g FROM oec_allocation_lots WHERE allocation_id = $1',
+    [allocation.id]
+  );
+  if (rows.length > 0) return rows;
+  return allocation.lot_id
+    ? [{ lot_id: allocation.lot_id, green_quantity_g: allocation.planned_green_quantity_g }]
+    : [];
+}
+
 async function checkTransitionPreconditions(allocation, to_state, tenant_id) {
   const {
-    id: allocation_id, state: from_state, process, lot_id,
+    id: allocation_id, state: from_state, process,
     planned_green_quantity_g, planned_bag_size_g,
   } = allocation;
   const checks = [];
@@ -92,17 +106,26 @@ async function checkTransitionPreconditions(allocation, to_state, tenant_id) {
         `No approved roast profile exists for ${process}. Create and approve a profile first.`,
     });
 
-    if (lot_id) {
-      const { rows: [lotRow] } = await pool.query(
-        'SELECT current_weight_g FROM oec_lots WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
-        [lot_id, tenant_id]
-      );
-      const available = lotRow?.current_weight_g ?? 0;
+    const allocLots = await getAllocationLots(allocation);
+    if (allocLots.length > 0) {
+      let shortLot = null;
+      for (const { lot_id: lid, green_quantity_g } of allocLots) {
+        const { rows: [lotRow] } = await pool.query(
+          'SELECT lot_code, current_weight_g FROM oec_lots WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
+          [lid, tenant_id]
+        );
+        const available = lotRow?.current_weight_g ?? 0;
+        if (available < green_quantity_g) {
+          shortLot = { code: lotRow?.lot_code || lid, available, need: green_quantity_g };
+          break;
+        }
+      }
       checks.push({
         label: 'Green stock available',
-        passed: available >= planned_green_quantity_g,
-        reason: available >= planned_green_quantity_g ? null :
-          `Insufficient green stock. Available: ${available}g, need: ${planned_green_quantity_g}g.`,
+        passed: !shortLot,
+        reason: shortLot
+          ? `Insufficient green stock for lot ${shortLot.code}. Available: ${shortLot.available}g, need: ${shortLot.need}g.`
+          : null,
       });
     }
   }
@@ -132,17 +155,24 @@ async function checkTransitionPreconditions(allocation, to_state, tenant_id) {
         `Confirmed bags (${totalConfirmed}) exceed projected yield (${projected}).`,
     });
 
-    const { rows: movRows } = await pool.query(
-      `SELECT id FROM oec_lot_movements
-       WHERE lot_id = $1 AND movement_type = 'reservation'
-         AND authorised_by IS NOT NULL LIMIT 1`,
-      [lot_id]
-    );
+    const allocLots = await getAllocationLots(allocation);
+    const lotIds = allocLots.map(l => l.lot_id);
+    let reservedCount = 0;
+    if (lotIds.length > 0) {
+      const { rows: [agg] } = await pool.query(
+        `SELECT COUNT(DISTINCT lot_id)::int AS n FROM oec_lot_movements
+         WHERE lot_id = ANY($1::uuid[]) AND movement_type = 'reservation'
+           AND authorised_by IS NOT NULL`,
+        [lotIds]
+      );
+      reservedCount = agg.n;
+    }
+    const allReserved = lotIds.length > 0 && reservedCount >= lotIds.length;
     checks.push({
       label: 'Green stock reserved',
-      passed: movRows.length > 0,
-      reason: movRows.length > 0 ? null :
-        'Green stock has not been reserved. Create a reservation movement in Inventory.',
+      passed: allReserved,
+      reason: allReserved ? null :
+        'Green stock has not been reserved for every lot. Create a reservation movement in Inventory.',
     });
   }
 

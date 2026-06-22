@@ -249,7 +249,7 @@ export default function AllocationDetail() {
   if (loading) return <Layout><div className="px-6 py-6 text-sm text-coffee-400">Loading…</div></Layout>;
   if (!data)   return <Layout><div className="px-6 py-6 text-sm" style={{ color: '#A32D2D' }}>Allocation not found.</div></Layout>;
 
-  const { allocation: a, lot, requests, state_log, roast_sessions, dispatch_date, projected_bags, confirmed_bags } = data;
+  const { allocation: a, lot, lots = [], requests, state_log, roast_sessions, dispatch_date, projected_bags, confirmed_bags } = data;
   const isClosed   = a.state === 'allocation_closed';
   const isArchived = !!a.archived_at;
   const isAdmin    = ['admin', 'roaster'].includes(user?.role);
@@ -356,6 +356,39 @@ export default function AllocationDetail() {
           )}
           </div>
         </div>
+
+        {/* Source lots */}
+        {lots.length > 0 && (
+          <div className="bg-white border border-coffee-200 rounded-xl p-5">
+            <p className="text-xs text-coffee-400 uppercase tracking-wide mb-3">
+              Source {lots.length > 1 ? 'Lots' : 'Lot'}
+            </p>
+            <div className="space-y-2">
+              {lots.map(l => (
+                <div key={l.lot_id} className="flex items-center justify-between text-sm">
+                  <Link
+                    to={`/inventory/${l.lot_id}`}
+                    className="text-coffee-800 hover:text-coffee-900 transition-colors"
+                  >
+                    <span style={{ fontWeight: 500 }}>{l.lot_code}</span>
+                    <span className="text-coffee-400">  · {l.process} · {l.harvest_year}</span>
+                  </Link>
+                  <span className="text-coffee-600 tabular-nums">
+                    {(l.green_quantity_g / 1000).toFixed(2)} kg
+                  </span>
+                </div>
+              ))}
+            </div>
+            {lots.length > 1 && (
+              <div className="flex items-center justify-between text-sm mt-3 pt-3" style={{ borderTop: '1px solid #F2EAE0' }}>
+                <span className="text-coffee-400 uppercase tracking-wide text-xs">Total green</span>
+                <span className="text-coffee-800 tabular-nums" style={{ fontWeight: 500 }}>
+                  {(a.planned_green_quantity_g / 1000).toFixed(2)} kg
+                </span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Requests */}
         <div className="bg-white border border-coffee-200 rounded-xl p-5">
