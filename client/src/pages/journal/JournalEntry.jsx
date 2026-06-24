@@ -4,7 +4,7 @@ import Layout from '../../components/Layout';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { Button, ProcessBadge } from '../../components/ui';
-import { ChevronDown, ChevronUp, Wand2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Wand2, QrCode, Download } from 'lucide-react';
 
 const TZ = 'Asia/Vientiane';
 const DOC_TYPES = ['field_notes', 'roast_log', 'cupping_record', 'allocation_record'];
@@ -68,6 +68,12 @@ export default function JournalEntry() {
   const [historyOpen,        setHistoryOpen]        = useState(false);
   const [viewVersion,        setViewVersion]        = useState(null);
 
+  const [qrUrl,      setQrUrl]      = useState('');
+  const [qrDataUrl,  setQrDataUrl]  = useState('');
+  const [qrFilename, setQrFilename] = useState('');
+  const [qrLoading,  setQrLoading]  = useState(false);
+  const [qrError,    setQrError]    = useState('');
+
   const load = useCallback(() => {
     setLoading(true);
     api.get(`/journal/${allocation_id}`)
@@ -81,6 +87,16 @@ export default function JournalEntry() {
   }, [allocation_id, type]);
 
   useEffect(load, [load]);
+
+  useEffect(() => {
+    const a = data?.allocation;
+    if (!a || qrUrl) return;
+    function toSlug(s) {
+      return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    }
+    const slug = [toSlug(a.allocation_code), toSlug(a.process), toSlug(a.estate)].filter(Boolean).join('-');
+    setQrUrl(`https://oneestate.coffee/journal/${slug}`);
+  }, [data]);
 
   const doc      = data?.documents?.[type];
   const alloc    = data?.allocation;
@@ -135,6 +151,30 @@ export default function JournalEntry() {
     } finally {
       setAiDrafting(false);
     }
+  }
+
+  async function generateQr() {
+    if (!qrUrl.trim()) { setQrError('Enter a URL first.'); return; }
+    setQrLoading(true); setQrError(''); setQrDataUrl('');
+    try {
+      const res = await api.get(`/journal/${allocation_id}/qr?url=${encodeURIComponent(qrUrl.trim())}`);
+      const d = await res.json();
+      if (!res.ok) { setQrError(d.error || 'Failed.'); return; }
+      setQrDataUrl(d.dataUrl);
+      setQrFilename(d.filename);
+    } catch {
+      setQrError('Network error.');
+    } finally {
+      setQrLoading(false);
+    }
+  }
+
+  function downloadQr() {
+    if (!qrDataUrl) return;
+    const a = document.createElement('a');
+    a.href = qrDataUrl;
+    a.download = qrFilename;
+    a.click();
   }
 
   async function deleteDraft() {
@@ -338,6 +378,54 @@ export default function JournalEntry() {
             )}
           </div>
         )}
+
+        {/* Package QR Code */}
+        <div className="bg-white border border-coffee-200 rounded-xl p-5 mb-5">
+          <div className="flex items-center gap-2 mb-4">
+            <QrCode size={14} className="text-coffee-400" />
+            <p className="text-xs text-coffee-400 uppercase tracking-wide">Package QR Code</p>
+          </div>
+
+          <div className="flex gap-2 mb-3">
+            <input
+              type="url"
+              value={qrUrl}
+              onChange={e => { setQrUrl(e.target.value); setQrDataUrl(''); }}
+              placeholder="https://oneestate.coffee/journal/your-slug"
+              className="flex-1 h-9 px-3 text-sm border border-coffee-200 rounded-lg focus:border-coffee-500 focus:ring-2 focus:ring-coffee-100"
+            />
+            <button
+              onClick={generateQr}
+              disabled={qrLoading || !qrUrl.trim()}
+              className="px-4 h-9 text-xs rounded-lg border transition-colors disabled:opacity-40"
+              style={{ borderColor: '#E0D0BC', color: '#8B6A47', background: '#FAF6F0' }}
+            >
+              {qrLoading ? 'Generating…' : 'Generate'}
+            </button>
+          </div>
+
+          {qrError && <p className="text-xs mb-3" style={{ color: '#A32D2D' }}>{qrError}</p>}
+
+          {qrDataUrl && (
+            <div className="flex flex-col items-center gap-3 pt-3" style={{ borderTop: '1px solid #F2EAE0' }}>
+              <img
+                src={qrDataUrl}
+                alt="QR Code"
+                className="rounded-lg"
+                style={{ width: 180, height: 180, imageRendering: 'pixelated' }}
+              />
+              <p className="text-xs text-coffee-400 text-center max-w-xs break-all">{qrUrl}</p>
+              <button
+                onClick={downloadQr}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs rounded-lg transition-colors"
+                style={{ background: '#533A24', color: '#fff' }}
+              >
+                <Download size={12} />
+                Download PNG ({qrFilename})
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Version history */}
         {versions.length > 0 && (

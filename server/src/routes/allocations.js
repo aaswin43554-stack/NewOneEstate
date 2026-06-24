@@ -12,7 +12,7 @@ function secretMatches(provided, expected) {
   return crypto.timingSafeEqual(a, b);
 }
 const {
-  calculateProjectedBags, calculateDispatchDate,
+  calculateProjectedBags, getProjectedBags, calculateDispatchDate,
   generateAllocationCode, getNextState,
   checkTransitionPreconditions,
 } = require('../services/allocationService');
@@ -266,11 +266,22 @@ router.put('/:id', requireRole('admin', 'roaster'), async (req, res) => {
   const alloc = await fetchAllocation(req.params.id, tenant_id);
   if (!alloc) return res.status(404).json({ error: 'Allocation not found.' });
   if (closedGuard(alloc, res)) return;
-  if (alloc.state === 'roasting_in_progress') {
+
+  const { estate, planned_green_quantity_g, planned_bag_size_g, planned_price_json,
+          window_open_date, window_close_date } = req.body;
+  const hasOverride = 'projected_bags_override' in req.body;
+  const overrideRaw = req.body.projected_bags_override;
+  const overrideVal = hasOverride
+    ? (overrideRaw !== null && overrideRaw !== '' ? parseInt(overrideRaw) : null)
+    : undefined;
+
+  const hasCoreFields = estate !== undefined || planned_green_quantity_g !== undefined ||
+    planned_bag_size_g !== undefined || planned_price_json !== undefined ||
+    window_open_date !== undefined || window_close_date !== undefined;
+
+  if (alloc.state === 'roasting_in_progress' && hasCoreFields) {
     return res.status(400).json({ error: 'Cannot edit core fields while roasting is in progress.' });
   }
-
-  const { estate, planned_green_quantity_g, planned_bag_size_g, planned_price_json, window_open_date, window_close_date } = req.body;
 
   const vEdit = validateInts(req.body, [
     { key: 'planned_green_quantity_g', label: 'Planned green quantity (g)', min: 1 },
@@ -278,27 +289,41 @@ router.put('/:id', requireRole('admin', 'roaster'), async (req, res) => {
   ]);
   if (!vEdit.ok) return res.status(400).json({ error: vEdit.error });
 
+  const setClauses = [];
+  const params = [];
+
+  if (hasCoreFields) {
+    params.push(estate || null);
+    setClauses.push(`estate = COALESCE($${params.length}, estate)`);
+    params.push(planned_green_quantity_g ? parseInt(planned_green_quantity_g) : null);
+    setClauses.push(`planned_green_quantity_g = COALESCE($${params.length}, planned_green_quantity_g)`);
+    params.push(planned_bag_size_g ? parseInt(planned_bag_size_g) : null);
+    setClauses.push(`planned_bag_size_g = COALESCE($${params.length}, planned_bag_size_g)`);
+    params.push(planned_price_json ? JSON.stringify(planned_price_json) : null);
+    setClauses.push(`planned_price_json = COALESCE($${params.length}, planned_price_json)`);
+    params.push(window_open_date || null);
+    setClauses.push(`window_open_date = COALESCE($${params.length}, window_open_date)`);
+    params.push(window_close_date || null);
+    setClauses.push(`window_close_date = COALESCE($${params.length}, window_close_date)`);
+  }
+
+  if (hasOverride) {
+    params.push(overrideVal);
+    setClauses.push(`projected_bags_override = $${params.length}`);
+  }
+
+  if (setClauses.length === 0) {
+    return res.json({ allocation: alloc });
+  }
+
+  params.push(req.user.id);
+  setClauses.push(`updated_by = $${params.length}`, 'updated_at = NOW()');
+  params.push(alloc.id);
+
   try {
     const { rows: [updated] } = await pool.query(
-      `UPDATE oec_allocations SET
-         estate = COALESCE($1, estate),
-         planned_green_quantity_g = COALESCE($2, planned_green_quantity_g),
-         planned_bag_size_g = COALESCE($3, planned_bag_size_g),
-         planned_price_json = COALESCE($4, planned_price_json),
-         window_open_date = COALESCE($5, window_open_date),
-         window_close_date = COALESCE($6, window_close_date),
-         updated_at = NOW(), updated_by = $7
-       WHERE id = $8 RETURNING *`,
-      [
-        estate || null,
-        planned_green_quantity_g ? parseInt(planned_green_quantity_g) : null,
-        planned_bag_size_g ? parseInt(planned_bag_size_g) : null,
-        planned_price_json ? JSON.stringify(planned_price_json) : null,
-        window_open_date || null,
-        window_close_date || null,
-        req.user.id,
-        alloc.id,
-      ]
+      `UPDATE oec_allocations SET ${setClauses.join(', ')} WHERE id = $${params.length} RETURNING *`,
+      params
     );
     return res.json({ allocation: updated });
   } catch (err) {
@@ -575,9 +600,7 @@ router.put('/:id/requests/:req_id', requireRole('admin', 'roaster'), async (req,
       [alloc.id, request.id]
     );
     const newTotal = agg.total + request.quantity_bags;
-    const projected = calculateProjectedBags(
-      alloc.planned_green_quantity_g, alloc.planned_bag_size_g, alloc.process
-    );
+    const projected = getProjectedBags(alloc);
     if (newTotal > projected) {
       return res.status(400).json({
         error: `Confirming this would bring total to ${newTotal} bags, exceeding projected yield of ${projected} bags.`,
@@ -672,7 +695,7 @@ router.get('/', async (req, res) => {
       return {
         ...a,
         max_ended: undefined,
-        projected_bags: calculateProjectedBags(a.planned_green_quantity_g, a.planned_bag_size_g, a.process),
+        projected_bags: getProjectedBags(a),
         dispatch_date,
         request_summary: {
           total_requests: a.total_requests,
@@ -755,7 +778,7 @@ router.get('/:id', async (req, res) => {
     state_log: stateLogs,
     roast_sessions: sessions,
     dispatch_date: await calculateDispatchDate(alloc.id, alloc.process),
-    projected_bags: calculateProjectedBags(alloc.planned_green_quantity_g, alloc.planned_bag_size_g, alloc.process),
+    projected_bags: getProjectedBags(alloc),
     confirmed_bags: aggRow.confirmed_bags,
   });
 });

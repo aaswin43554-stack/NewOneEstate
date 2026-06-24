@@ -18,6 +18,11 @@ function calculateProjectedBags(planned_green_quantity_g, planned_bag_size_g, pr
   return Math.max(0, Math.floor(roasted_g / planned_bag_size_g));
 }
 
+function getProjectedBags(alloc) {
+  if (alloc.projected_bags_override != null) return alloc.projected_bags_override;
+  return calculateProjectedBags(alloc.planned_green_quantity_g, alloc.planned_bag_size_g, alloc.process);
+}
+
 async function calculateDispatchDate(allocation_id, process) {
   const { rows } = await pool.query(
     `SELECT MAX(ended_at) AS max_ended FROM oec_roast_sessions
@@ -198,6 +203,7 @@ async function checkTransitionPreconditions(allocation, to_state, tenant_id) {
 
 module.exports = {
   calculateProjectedBags,
+  getProjectedBags,
   calculateDispatchDate,
   generateAllocationCode,
   getNextState,

@@ -60,7 +60,7 @@ export default function ContactForm() {
         : await api.post('/contacts', form);
       if (!res.ok) { const d = await res.json(); setError(d.error || 'Failed.'); return; }
       const d = await res.json();
-      navigate(`/contacts/${isEdit ? id : d.contact.id}`);
+      navigate(isEdit ? `/contacts/${id}` : '/contacts');
     } catch {
       setError('Network error.');
     } finally {

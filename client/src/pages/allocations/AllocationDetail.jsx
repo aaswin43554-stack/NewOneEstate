@@ -199,6 +199,7 @@ export default function AllocationDetail() {
       planned_bag_size_g:        a.planned_bag_size_g || '',
       window_open_date:          a.window_open_date  ? a.window_open_date.split('T')[0] : '',
       window_close_date:         a.window_close_date ? a.window_close_date.split('T')[0] : '',
+      projected_bags_override:   a.projected_bags_override != null ? String(a.projected_bags_override) : '',
     });
     setEditError('');
     setEditOpen(true);
@@ -214,6 +215,8 @@ export default function AllocationDetail() {
       planned_bag_size_g:        editFields.planned_bag_size_g ? parseInt(editFields.planned_bag_size_g) : undefined,
       window_open_date:          editFields.window_open_date  || undefined,
       window_close_date:         editFields.window_close_date || undefined,
+      projected_bags_override:   editFields.projected_bags_override !== ''
+        ? parseInt(editFields.projected_bags_override) : null,
     };
     const res = await api.put(`/allocations/${id}`, body);
     const d   = await res.json();
@@ -486,6 +489,11 @@ export default function AllocationDetail() {
           <div className="mb-4">
             <p className="text-xs text-coffee-400 mb-1.5">
               {confirmed_bags} bags confirmed of {projected_bags} projected
+              {a.projected_bags_override != null && (
+                <span className="ml-1.5 px-1.5 py-0.5 rounded text-xs" style={{ background: '#EAF3DE', color: '#3B6D11' }}>
+                  override
+                </span>
+              )}
             </p>
             <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ background: '#F2EAE0' }}>
               <div
@@ -711,14 +719,20 @@ export default function AllocationDetail() {
       {editOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(34,21,8,0.2)' }}>
           <div className="bg-white rounded-2xl border border-coffee-200 w-full max-w-md p-6">
-            <h2 className="text-base text-coffee-900 mb-5" style={{ fontWeight: 500 }}>Edit Allocation</h2>
+            <h2 className="text-base text-coffee-900 mb-4" style={{ fontWeight: 500 }}>Edit Allocation</h2>
+            {a.state === 'roasting_in_progress' && (
+              <p className="text-xs mb-4 px-3 py-2 rounded-lg" style={{ background: '#FEF9E7', color: '#854D0E' }}>
+                Roasting in progress — only Projected Bags can be changed.
+              </p>
+            )}
             <form onSubmit={saveEdit} className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-coffee-500 uppercase tracking-wide mb-1.5">Estate</label>
                 <input
                   value={editFields.estate}
+                  disabled={a.state === 'roasting_in_progress'}
                   onChange={e => setEditFields(p => ({ ...p, estate: e.target.value }))}
-                  className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg"
+                  className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg disabled:opacity-50 disabled:bg-coffee-50"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -727,8 +741,9 @@ export default function AllocationDetail() {
                   <input
                     type="number" step="0.01"
                     value={editFields.planned_green_quantity_g}
+                    disabled={a.state === 'roasting_in_progress'}
                     onChange={e => setEditFields(p => ({ ...p, planned_green_quantity_g: e.target.value }))}
-                    className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg"
+                    className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg disabled:opacity-50 disabled:bg-coffee-50"
                   />
                 </div>
                 <div>
@@ -736,8 +751,9 @@ export default function AllocationDetail() {
                   <input
                     type="number"
                     value={editFields.planned_bag_size_g}
+                    disabled={a.state === 'roasting_in_progress'}
                     onChange={e => setEditFields(p => ({ ...p, planned_bag_size_g: e.target.value }))}
-                    className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg"
+                    className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg disabled:opacity-50 disabled:bg-coffee-50"
                   />
                 </div>
               </div>
@@ -747,8 +763,9 @@ export default function AllocationDetail() {
                   <input
                     type="date"
                     value={editFields.window_open_date}
+                    disabled={a.state === 'roasting_in_progress'}
                     onChange={e => setEditFields(p => ({ ...p, window_open_date: e.target.value }))}
-                    className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg"
+                    className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg disabled:opacity-50 disabled:bg-coffee-50"
                   />
                 </div>
                 <div>
@@ -756,10 +773,27 @@ export default function AllocationDetail() {
                   <input
                     type="date"
                     value={editFields.window_close_date}
+                    disabled={a.state === 'roasting_in_progress'}
                     onChange={e => setEditFields(p => ({ ...p, window_close_date: e.target.value }))}
-                    className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg"
+                    className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg disabled:opacity-50 disabled:bg-coffee-50"
                   />
                 </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-coffee-500 uppercase tracking-wide mb-1.5">
+                  Projected Bags Override
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  placeholder={`Auto (${projected_bags} bags)`}
+                  value={editFields.projected_bags_override}
+                  onChange={e => setEditFields(p => ({ ...p, projected_bags_override: e.target.value }))}
+                  className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg"
+                />
+                <p className="text-xs text-coffee-400 mt-1">
+                  Leave blank to auto-calculate · clear to reset to auto
+                </p>
               </div>
               {editError && <p className="text-xs" style={{ color: '#A32D2D' }}>{editError}</p>}
               <div className="flex gap-3 pt-2">

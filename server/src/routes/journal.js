@@ -1,5 +1,6 @@
 const express = require('express');
 const pool    = require('../config/db');
+const qrcode  = require('qrcode');
 const { requireAuth, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
@@ -273,6 +274,49 @@ router.get('/', async (req, res) => {
   } catch (err) {
     console.error('List journal:', err);
     return res.status(500).json({ error: 'Failed to fetch journal.' });
+  }
+});
+
+// GET /api/journal/:allocation_id/qr  — generate QR PNG for the public journal URL
+router.get('/:allocation_id/qr', async (req, res) => {
+  const tenant_id = req.user.tenant_id;
+  const { allocation_id } = req.params;
+  const { url: customUrl } = req.query;
+
+  try {
+    const { rows: [allocation] } = await pool.query(
+      'SELECT * FROM oec_allocations WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
+      [allocation_id, tenant_id]
+    );
+    if (!allocation) return res.status(404).json({ error: 'Allocation not found.' });
+
+    function toSlug(s) {
+      return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    }
+    const autoSlug = [
+      toSlug(allocation.allocation_code),
+      toSlug(allocation.process),
+      toSlug(allocation.estate),
+    ].filter(Boolean).join('-');
+
+    const targetUrl = customUrl && customUrl.trim()
+      ? customUrl.trim()
+      : `https://oneestate.coffee/journal/${autoSlug}`;
+
+    const dataUrl = await qrcode.toDataURL(targetUrl, {
+      width: 600,
+      margin: 2,
+      color: { dark: '#221508', light: '#FFFBF5' },
+    });
+
+    return res.json({
+      dataUrl,
+      filename: `${allocation.allocation_code}-journal-qr.png`,
+      url: targetUrl,
+    });
+  } catch (err) {
+    console.error('Generate QR:', err);
+    return res.status(500).json({ error: 'Failed to generate QR code.' });
   }
 });
 
