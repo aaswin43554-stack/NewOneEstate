@@ -249,8 +249,9 @@ export default function AllocationDetail() {
     setArchiving(true); setArchiveError('');
     const res = await api.put(`/allocations/${id}/archive`, {});
     const d   = await res.json();
-    if (res.ok) { navigate('/allocations'); }
-    else { setArchiveError(d.error || 'Failed to archive.'); setArchiving(false); }
+    if (res.ok) { load(); }
+    else { setArchiveError(d.error || 'Failed to archive.'); }
+    setArchiving(false);
   }
 
   async function unarchiveAllocation() {
@@ -272,9 +273,10 @@ export default function AllocationDetail() {
   const bagBarColor = bagPct >= 100 ? '#A32D2D' : bagPct >= 90 ? '#BA7517' : '#3B6D11';
   const allChecksPassed = transitionChecks?.checks?.every(c => c.passed) ?? true;
 
-  // Can add requests while open, or admin while roasting
+  // Can add requests while upcoming/open, or admin while roasting
   const canAddRequests = !isClosed && isAdmin &&
-    (a.state === 'open_for_requests' ||
+    (a.state === 'upcoming' ||
+     a.state === 'open_for_requests' ||
      (a.state === 'roasting_in_progress' && user?.role === 'admin'));
 
   return (

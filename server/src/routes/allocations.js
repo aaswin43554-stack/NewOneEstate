@@ -333,6 +333,9 @@ router.put('/:id', requireRole('admin', 'roaster'), async (req, res) => {
     return res.json({ allocation: updated });
   } catch (err) {
     console.error('Update allocation:', err);
+    if (err.code === '23505') {
+      return res.status(400).json({ error: 'An allocation with that code already exists.' });
+    }
     return res.status(500).json({ error: 'Failed to update allocation.' });
   }
 });
@@ -490,12 +493,13 @@ router.post('/:id/requests', requireRole('admin', 'roaster'), async (req, res) =
   if (!alloc) return res.status(404).json({ error: 'Allocation not found.' });
   if (closedGuard(alloc, res)) return;
 
-  // Requests can be added while open, or by admin after roasting has started
-  const canAddRequest = alloc.state === 'open_for_requests' ||
+  // Requests can be added while upcoming or open, or by admin after roasting has started
+  const canAddRequest = alloc.state === 'upcoming' ||
+    alloc.state === 'open_for_requests' ||
     (alloc.state === 'roasting_in_progress' && req.user.role === 'admin');
   if (!canAddRequest) {
     return res.status(400).json({
-      error: 'Requests can only be added while Open for Requests, or by an admin during Roasting.',
+      error: 'Requests can only be added while Upcoming, Open for Requests, or by an admin during Roasting.',
     });
   }
 

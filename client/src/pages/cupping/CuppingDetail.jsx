@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Pencil } from 'lucide-react';
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis,
   PolarRadiusAxis, ResponsiveContainer, Tooltip,
@@ -53,6 +53,18 @@ const SCORE_LABELS = [
   [80, 84.99, 'Specialty',     '#3B6D11'],
   [75, 79.99, 'Very Good',     '#BA7517'],
   [0,  74.99, 'Below Specialty', '#A32D2D'],
+];
+
+const ACIDITY_INTENSITIES = ['Low', 'Medium-Low', 'Medium', 'Medium-High', 'High'];
+const BODY_LEVELS = ['Thin', 'Light', 'Medium', 'Heavy', 'Full'];
+const EDIT_ATTRS = [
+  { key: 'fragrance_aroma', label: 'Fragrance / Aroma', hasDry: true, hasWet: true },
+  { key: 'flavor',          label: 'Flavor' },
+  { key: 'aftertaste',      label: 'Aftertaste' },
+  { key: 'acidity',         label: 'Acidity',  hasIntensity: true },
+  { key: 'body',            label: 'Body',      hasLevel: true },
+  { key: 'balance',         label: 'Balance' },
+  { key: 'overall',         label: 'Overall' },
 ];
 
 function getScoreLabel(score) {
@@ -121,6 +133,16 @@ export default function CuppingDetail() {
   const [deleting,    setDeleting]    = useState(false);
   const [deleteError, setDeleteError] = useState('');
 
+  const [editOpen,          setEditOpen]          = useState(false);
+  const [editScores,        setEditScores]        = useState({});
+  const [editObs,           setEditObs]           = useState({});
+  const [editCupChecks,     setEditCupChecks]     = useState({ uniformity: [], clean_cup: [], sweetness: [] });
+  const [editDefects,       setEditDefects]       = useState([]);
+  const [editDecision,      setEditDecision]      = useState('');
+  const [editDecisionNotes, setEditDecisionNotes] = useState('');
+  const [editSaving,        setEditSaving]        = useState(false);
+  const [editError,         setEditError]         = useState('');
+
   function load() {
     setLoading(true);
     api.get(`/cupping-sessions/${id}`)
@@ -140,6 +162,82 @@ export default function CuppingDetail() {
     await api.put(`/cupping-sessions/${id}/samples/${samples[0].id}`, { journal_draft: draft });
     setLastSaved(new Date());
     setDraftSaving(false);
+  }
+
+  function openEditModal() {
+    if (!sample) return;
+    const nCups = session.number_of_cups || 3;
+    setEditScores({
+      fragrance_aroma: parseFloat(sample.score_fragrance_aroma) || 8,
+      flavor:          parseFloat(sample.score_flavor)          || 8,
+      aftertaste:      parseFloat(sample.score_aftertaste)      || 8,
+      acidity:         parseFloat(sample.score_acidity)         || 8,
+      body:            parseFloat(sample.score_body)            || 8,
+      balance:         parseFloat(sample.score_balance)         || 8,
+      overall:         parseFloat(sample.score_overall)         || 8,
+    });
+    setEditObs({
+      obs_fragrance_dry: sample.obs_fragrance_dry  || '',
+      obs_aroma_wet:     sample.obs_aroma_wet      || '',
+      obs_flavor:        sample.obs_flavor         || '',
+      obs_aftertaste:    sample.obs_aftertaste     || '',
+      obs_acidity:       sample.obs_acidity        || '',
+      obs_body:          sample.obs_body           || '',
+      obs_balance:       sample.obs_balance        || '',
+      obs_overall:       sample.obs_overall        || '',
+      acidity_intensity: sample.acidity_intensity  || 'Medium',
+      body_level:        sample.body_level         || 'Medium',
+    });
+    const toCupArr = (arr) =>
+      Array.isArray(arr) && arr.length > 0 ? arr : Array(nCups).fill(true);
+    setEditCupChecks({
+      uniformity: toCupArr(sample.uniformity_cups),
+      clean_cup:  toCupArr(sample.clean_cup_cups),
+      sweetness:  toCupArr(sample.sweetness_cups),
+    });
+    setEditDefects(Array.isArray(sample.defects_json) ? [...sample.defects_json] : []);
+    setEditDecision(sample.final_decision || '');
+    setEditDecisionNotes(sample.decision_notes || '');
+    setEditError('');
+    setEditOpen(true);
+  }
+
+  async function saveEdit() {
+    if (!editDecision) { setEditError('Final decision is required.'); return; }
+    if (['adjust', 'reject'].includes(editDecision) && !editDecisionNotes.trim()) {
+      setEditError('Decision notes are required for Adjust or Reject.');
+      return;
+    }
+    setEditSaving(true); setEditError('');
+    const res = await api.put(`/cupping-sessions/${id}/samples/${sample.id}`, {
+      score_fragrance_aroma: editScores.fragrance_aroma,
+      score_flavor:          editScores.flavor,
+      score_aftertaste:      editScores.aftertaste,
+      score_acidity:         editScores.acidity,
+      score_body:            editScores.body,
+      score_balance:         editScores.balance,
+      score_overall:         editScores.overall,
+      obs_fragrance_dry:     editObs.obs_fragrance_dry  || null,
+      obs_aroma_wet:         editObs.obs_aroma_wet      || null,
+      obs_flavor:            editObs.obs_flavor         || null,
+      obs_aftertaste:        editObs.obs_aftertaste     || null,
+      obs_acidity:           editObs.obs_acidity        || null,
+      obs_body:              editObs.obs_body           || null,
+      obs_balance:           editObs.obs_balance        || null,
+      obs_overall:           editObs.obs_overall        || null,
+      acidity_intensity:     editObs.acidity_intensity,
+      body_level:            editObs.body_level,
+      uniformity_cups:       editCupChecks.uniformity,
+      clean_cup_cups:        editCupChecks.clean_cup,
+      sweetness_cups:        editCupChecks.sweetness,
+      defects_json:          editDefects,
+      final_decision:        editDecision,
+      decision_notes:        editDecisionNotes || null,
+    });
+    const d = await res.json();
+    if (res.ok) { setEditOpen(false); load(); }
+    else { setEditError(d.error || 'Failed to update.'); }
+    setEditSaving(false);
   }
 
   async function confirmDelete() {
@@ -207,13 +305,22 @@ export default function CuppingDetail() {
             </span>
           )}
           {isAdmin && (
-            <button
-              onClick={() => { setDeleteError(''); setDeleteOpen(true); }}
-              className="ml-auto flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors"
-              style={{ borderColor: '#F3C0C0', color: '#A32D2D' }}
-            >
-              <Trash2 size={12} /> Delete
-            </button>
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                onClick={openEditModal}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors"
+                style={{ borderColor: '#E0D0BC', color: '#8B6A47' }}
+              >
+                <Pencil size={12} /> Edit
+              </button>
+              <button
+                onClick={() => { setDeleteError(''); setDeleteOpen(true); }}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors"
+                style={{ borderColor: '#F3C0C0', color: '#A32D2D' }}
+              >
+                <Trash2 size={12} /> Delete
+              </button>
+            </div>
           )}
         </div>
 
@@ -409,6 +516,270 @@ export default function CuppingDetail() {
           </div>
         )}
       </div>
+
+      {/* Edit cupping modal */}
+      {editOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto p-4" style={{ background: 'rgba(34,21,8,0.4)' }}>
+          <div className="flex min-h-screen items-start justify-center">
+            <div className="bg-white rounded-2xl border border-coffee-200 w-full max-w-2xl my-8 p-6 space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-base text-coffee-900" style={{ fontWeight: 500 }}>Edit Cupping Session</h2>
+                <button onClick={() => setEditOpen(false)} className="text-coffee-400 hover:text-coffee-700 text-2xl leading-none">×</button>
+              </div>
+
+              {/* Scored Attributes */}
+              <div>
+                <p className="text-xs text-coffee-400 uppercase tracking-wide mb-3">Scores</p>
+                <div className="space-y-3">
+                  {EDIT_ATTRS.map(({ key, label, hasDry, hasWet, hasIntensity, hasLevel }) => (
+                    <div key={key} className="rounded-xl px-4 py-3" style={{ background: '#FAF6F0', border: '1px solid #F2EAE0' }}>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm text-coffee-700" style={{ fontWeight: 500 }}>{label}</span>
+                        <span className="font-mono text-coffee-900" style={{ fontWeight: 500, fontSize: 16 }}>
+                          {(editScores[key] || 8).toFixed(2)}
+                        </span>
+                      </div>
+                      <input
+                        type="range" min={6} max={10} step={0.25}
+                        value={editScores[key] || 8}
+                        onChange={e => setEditScores(p => ({ ...p, [key]: parseFloat(e.target.value) }))}
+                        className="w-full mb-1"
+                        style={{ accentColor: '#8B6A47' }}
+                      />
+                      <div className="flex justify-between text-xs text-coffee-300 mb-2">
+                        <span>6.00</span><span>8.00</span><span>10.00</span>
+                      </div>
+                      {hasDry ? (
+                        <div className="space-y-1.5">
+                          <input
+                            type="text"
+                            value={editObs.obs_fragrance_dry || ''}
+                            onChange={e => setEditObs(p => ({ ...p, obs_fragrance_dry: e.target.value }))}
+                            placeholder="Dry (Fragrance) notes…"
+                            className="w-full px-2 py-1.5 text-sm border border-coffee-200 rounded-lg"
+                          />
+                          <input
+                            type="text"
+                            value={editObs.obs_aroma_wet || ''}
+                            onChange={e => setEditObs(p => ({ ...p, obs_aroma_wet: e.target.value }))}
+                            placeholder="Wet (Aroma) notes…"
+                            className="w-full px-2 py-1.5 text-sm border border-coffee-200 rounded-lg"
+                          />
+                        </div>
+                      ) : (
+                        <input
+                          type="text"
+                          value={editObs[`obs_${key}`] || ''}
+                          onChange={e => setEditObs(p => ({ ...p, [`obs_${key}`]: e.target.value }))}
+                          placeholder="Descriptor notes…"
+                          className="w-full px-2 py-1.5 text-sm border border-coffee-200 rounded-lg"
+                        />
+                      )}
+                      {hasIntensity && (
+                        <div className="mt-2">
+                          <p className="text-xs text-coffee-400 mb-1">Intensity</p>
+                          <div className="flex gap-1 flex-wrap">
+                            {ACIDITY_INTENSITIES.map(opt => (
+                              <button
+                                key={opt} type="button"
+                                onClick={() => setEditObs(p => ({ ...p, acidity_intensity: opt }))}
+                                className="px-2 py-0.5 rounded text-xs border transition-colors"
+                                style={{
+                                  background:  editObs.acidity_intensity === opt ? '#533A24' : '#FFF',
+                                  color:       editObs.acidity_intensity === opt ? '#FFF' : '#8B6A47',
+                                  borderColor: editObs.acidity_intensity === opt ? '#533A24' : '#E0D0BC',
+                                }}
+                              >
+                                {opt}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {hasLevel && (
+                        <div className="mt-2">
+                          <p className="text-xs text-coffee-400 mb-1">Level</p>
+                          <div className="flex gap-1 flex-wrap">
+                            {BODY_LEVELS.map(opt => (
+                              <button
+                                key={opt} type="button"
+                                onClick={() => setEditObs(p => ({ ...p, body_level: opt }))}
+                                className="px-2 py-0.5 rounded text-xs border transition-colors"
+                                style={{
+                                  background:  editObs.body_level === opt ? '#533A24' : '#FFF',
+                                  color:       editObs.body_level === opt ? '#FFF' : '#8B6A47',
+                                  borderColor: editObs.body_level === opt ? '#533A24' : '#E0D0BC',
+                                }}
+                              >
+                                {opt}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Cup Checks */}
+              {!isLegacy && (
+                <div>
+                  <p className="text-xs text-coffee-400 uppercase tracking-wide mb-3">Cup Checks</p>
+                  <div className="space-y-3">
+                    {[
+                      { key: 'uniformity', label: 'Uniformity' },
+                      { key: 'clean_cup',  label: 'Clean Cup' },
+                      { key: 'sweetness',  label: 'Sweetness' },
+                    ].map(({ key, label }) => (
+                      <div key={key} className="rounded-xl px-4 py-3" style={{ background: '#FAF6F0', border: '1px solid #F2EAE0' }}>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm text-coffee-700" style={{ fontWeight: 500 }}>{label}</span>
+                          <span className="text-xs text-coffee-500">
+                            {(editCupChecks[key] || []).filter(Boolean).length * 2} / {(editCupChecks[key] || []).length * 2} pts
+                          </span>
+                        </div>
+                        <div className="flex gap-2">
+                          {(editCupChecks[key] || []).map((checked, i) => (
+                            <button
+                              key={i} type="button"
+                              onClick={() => setEditCupChecks(p => ({
+                                ...p,
+                                [key]: p[key].map((v, j) => j === i ? !v : v),
+                              }))}
+                              className="w-9 h-9 rounded-lg flex items-center justify-center text-sm transition-colors"
+                              style={{
+                                background: checked ? '#EAF3DE' : '#FAF6F0',
+                                border: `2px solid ${checked ? '#3B6D11' : '#E0D0BC'}`,
+                                color: checked ? '#3B6D11' : '#C0A882',
+                                fontWeight: 500,
+                              }}
+                            >
+                              {checked ? '✓' : '✗'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Defects */}
+              {!isLegacy && (
+                <div>
+                  <p className="text-xs text-coffee-400 uppercase tracking-wide mb-3">Defects</p>
+                  <div className="rounded-xl px-4 py-3 space-y-2" style={{ background: '#FAF6F0', border: '1px solid #F2EAE0' }}>
+                    {editDefects.map((d, i) => {
+                      const mult  = d.type === 'fault' ? 4 : 2;
+                      const score = (parseInt(d.cups_affected) || 0) * (parseInt(d.intensity) || 0) * mult;
+                      return (
+                        <div key={i} className="flex items-center gap-2 flex-wrap">
+                          <select
+                            value={d.type}
+                            onChange={e => setEditDefects(p => p.map((x, j) => j === i ? { ...x, type: e.target.value } : x))}
+                            className="h-8 px-2 text-xs border border-coffee-200 rounded-lg bg-white"
+                          >
+                            <option value="taint">Taint (×2)</option>
+                            <option value="fault">Fault (×4)</option>
+                          </select>
+                          <input
+                            type="number" min={1} max={5}
+                            value={d.cups_affected}
+                            onChange={e => setEditDefects(p => p.map((x, j) => j === i ? { ...x, cups_affected: e.target.value } : x))}
+                            placeholder="Cups"
+                            className="w-16 h-8 px-2 text-xs border border-coffee-200 rounded-lg text-center"
+                          />
+                          <span className="text-xs text-coffee-400">×</span>
+                          <input
+                            type="number" min={1} max={4}
+                            value={d.intensity}
+                            onChange={e => setEditDefects(p => p.map((x, j) => j === i ? { ...x, intensity: e.target.value } : x))}
+                            placeholder="Int."
+                            className="w-14 h-8 px-2 text-xs border border-coffee-200 rounded-lg text-center"
+                          />
+                          <span className="text-xs text-coffee-600" style={{ fontWeight: 500 }}>= −{score}</span>
+                          <input
+                            type="text"
+                            value={d.notes || ''}
+                            onChange={e => setEditDefects(p => p.map((x, j) => j === i ? { ...x, notes: e.target.value } : x))}
+                            placeholder="Description…"
+                            className="flex-1 h-8 px-2 text-xs border border-coffee-200 rounded-lg"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setEditDefects(p => p.filter((_, j) => j !== i))}
+                            className="text-coffee-400 hover:text-coffee-700 text-lg leading-none"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      onClick={() => setEditDefects(p => [...p, { type: 'taint', cups_affected: 1, intensity: 1, notes: '' }])}
+                      className="text-xs text-coffee-500 hover:text-coffee-700 transition-colors"
+                    >
+                      + Add Defect
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Final Decision */}
+              <div>
+                <p className="text-xs text-coffee-400 uppercase tracking-wide mb-3">Final Decision</p>
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  {[
+                    { value: 'adjust',  label: 'Adjust',  activeColor: '#BA7517', activeBg: '#FAEEDA' },
+                    { value: 'approve', label: 'Approve', activeColor: '#3B6D11', activeBg: '#EAF3DE' },
+                    { value: 'reject',  label: 'Reject',  activeColor: '#A32D2D', activeBg: '#FCEBEB' },
+                  ].map(opt => (
+                    <button
+                      key={opt.value} type="button"
+                      onClick={() => setEditDecision(opt.value)}
+                      className="py-2.5 rounded-xl text-sm border transition-colors"
+                      style={{
+                        background:  editDecision === opt.value ? opt.activeBg   : '#FFF',
+                        color:       editDecision === opt.value ? opt.activeColor : '#8B6A47',
+                        borderColor: editDecision === opt.value ? opt.activeColor : '#E0D0BC',
+                        fontWeight:  editDecision === opt.value ? 500 : 400,
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                {['adjust', 'reject'].includes(editDecision) && (
+                  <textarea
+                    value={editDecisionNotes}
+                    onChange={e => setEditDecisionNotes(e.target.value)}
+                    rows={3}
+                    placeholder={editDecision === 'adjust' ? 'Describe what to adjust…' : 'Reason for rejection…'}
+                    className="w-full px-3 py-2 text-sm border border-coffee-200 rounded-lg resize-none"
+                  />
+                )}
+              </div>
+
+              {editError && <p className="text-xs" style={{ color: '#A32D2D' }}>{editError}</p>}
+
+              <div className="flex gap-3 pt-2">
+                <Button
+                  type="button"
+                  onClick={saveEdit}
+                  disabled={editSaving || !editDecision}
+                  className="flex-1 justify-center"
+                  style={{ background: '#3B6D11', color: '#fff' }}
+                >
+                  {editSaving ? 'Saving…' : 'Save Changes'}
+                </Button>
+                <Button type="button" variant="secondary" onClick={() => setEditOpen(false)}>Cancel</Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete cupping session modal */}
       {deleteOpen && (

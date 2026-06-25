@@ -165,8 +165,11 @@ async function triggerExport(format) {
 }
 
 export default function AllocationDashboard() {
-  const [allocations, setAllocations] = useState([]);
-  const [loading,     setLoading]     = useState(true);
+  const [allocations,        setAllocations]        = useState([]);
+  const [loading,            setLoading]            = useState(true);
+  const [showArchived,       setShowArchived]       = useState(false);
+  const [archivedList,       setArchivedList]       = useState([]);
+  const [archivedLoading,    setArchivedLoading]    = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -175,6 +178,17 @@ export default function AllocationDashboard() {
       .then(d => setAllocations(d.allocations || []))
       .finally(() => setLoading(false));
   }, []);
+
+  async function toggleArchived() {
+    if (!showArchived && archivedList.length === 0) {
+      setArchivedLoading(true);
+      const res = await api.get('/allocations?include_archived=true');
+      const d   = await res.json();
+      setArchivedList((d.allocations || []).filter(a => !!a.archived_at));
+      setArchivedLoading(false);
+    }
+    setShowArchived(prev => !prev);
+  }
 
   const grouped = KANBAN_COLUMNS.reduce((acc, col) => {
     acc[col.key] = allocations.filter(a => col.states.includes(a.state));
@@ -191,6 +205,9 @@ export default function AllocationDashboard() {
             <div className="flex gap-2">
               <Button variant="ghost" onClick={() => triggerExport('csv')}>CSV</Button>
               <Button variant="ghost" onClick={() => triggerExport('json')}>JSON</Button>
+              <Button variant="ghost" onClick={toggleArchived}>
+                {showArchived ? 'Hide Archived' : 'Archived'}
+              </Button>
               <Button variant="primary" onClick={() => navigate('/allocations/new')}>+ New Allocation</Button>
             </div>
           }
@@ -242,6 +259,48 @@ export default function AllocationDashboard() {
               ))}
             </div>
           </>
+        )}
+
+        {/* Archived section */}
+        {showArchived && (
+          <div className="mt-8">
+            <div className="flex items-center gap-2 mb-4">
+              <span
+                className="w-2 h-2 rounded-full flex-shrink-0"
+                style={{ background: '#A8896A' }}
+              />
+              <p className="text-xs text-coffee-400 uppercase tracking-wide" style={{ fontWeight: 500 }}>
+                Archived
+              </p>
+              {!archivedLoading && (
+                <span
+                  className="inline-flex items-center justify-center rounded-full text-xs text-coffee-500"
+                  style={{ width: 20, height: 20, background: '#E0D0BC' }}
+                >
+                  {archivedList.length}
+                </span>
+              )}
+            </div>
+            {archivedLoading ? (
+              <p className="text-sm text-coffee-400">Loading…</p>
+            ) : archivedList.length === 0 ? (
+              <p className="text-sm text-coffee-300">No archived allocations.</p>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {archivedList.map(a => (
+                  <div key={a.id} className="relative">
+                    <AllocationCard alloc={a} onClick={() => navigate(`/allocations/${a.id}`)} />
+                    <span
+                      className="absolute top-2 right-2 text-xs px-1.5 py-0.5 rounded"
+                      style={{ background: '#F2EAE0', color: '#8B6A47', pointerEvents: 'none' }}
+                    >
+                      Archived
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
     </Layout>
