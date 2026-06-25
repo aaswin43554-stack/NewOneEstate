@@ -111,28 +111,6 @@ async function checkTransitionPreconditions(allocation, to_state, tenant_id) {
         `No approved roast profile exists for ${process}. Create and approve a profile first.`,
     });
 
-    const allocLots = await getAllocationLots(allocation);
-    if (allocLots.length > 0) {
-      let shortLot = null;
-      for (const { lot_id: lid, green_quantity_g } of allocLots) {
-        const { rows: [lotRow] } = await pool.query(
-          'SELECT lot_code, current_weight_g FROM oec_lots WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
-          [lid, tenant_id]
-        );
-        const available = lotRow?.current_weight_g ?? 0;
-        if (available < green_quantity_g) {
-          shortLot = { code: lotRow?.lot_code || lid, available, need: green_quantity_g };
-          break;
-        }
-      }
-      checks.push({
-        label: 'Green stock available',
-        passed: !shortLot,
-        reason: shortLot
-          ? `Insufficient green stock for lot ${shortLot.code}. Available: ${shortLot.available}g, need: ${shortLot.need}g.`
-          : null,
-      });
-    }
   }
 
   // open_for_requests → roasting_in_progress

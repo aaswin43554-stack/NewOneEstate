@@ -49,6 +49,8 @@ export default function LotDetail() {
   const [editError,   setEditError]   = useState('');
   const [editLoading, setEditLoading] = useState(false);
   const [deleting,    setDeleting]    = useState(false);
+  const [deletingMov, setDeletingMov] = useState({});
+  const [movDelError, setMovDelError] = useState('');
 
   const canWrite = user?.role === 'admin' || user?.role === 'roaster';
   const isAdmin  = user?.role === 'admin';
@@ -149,6 +151,22 @@ export default function LotDetail() {
       setMoveError('Failed to record movement.');
     } finally {
       setMoveLoading(false);
+    }
+  }
+
+  async function deleteMovement(movId) {
+    if (!window.confirm('Delete this movement? The lot weight will be reversed.')) return;
+    setMovDelError('');
+    setDeletingMov(p => ({ ...p, [movId]: true }));
+    try {
+      const res = await api.delete(`/lots/${id}/movements/${movId}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { setMovDelError(data.error || 'Failed to delete movement.'); }
+      else { fetchLot(); }
+    } catch {
+      setMovDelError('Failed to delete movement.');
+    } finally {
+      setDeletingMov(p => ({ ...p, [movId]: false }));
     }
   }
 
@@ -324,7 +342,7 @@ export default function LotDetail() {
               <table className="w-full text-xs">
                 <thead>
                   <tr style={{ borderBottom: '1px solid #F2EAE0' }}>
-                    {['Date & Time', 'Type', 'Weight Change', 'Reason', 'Authorised By'].map(h => (
+                    {['Date & Time', 'Type', 'Weight Change', 'Reason', 'Authorised By', ...(isAdmin ? [''] : [])].map(h => (
                       <th
                         key={h}
                         className={`pb-2.5 text-coffee-400 uppercase tracking-wide whitespace-nowrap ${
@@ -355,12 +373,27 @@ export default function LotDetail() {
                         </td>
                         <td className="py-2.5 pr-6 text-coffee-500">{m.reason || '—'}</td>
                         <td className="py-2.5 text-coffee-500">{m.authorised_by_name || '—'}</td>
+                        {isAdmin && (
+                          <td className="py-2.5 text-right whitespace-nowrap">
+                            <button
+                              onClick={() => deleteMovement(m.id)}
+                              disabled={!!deletingMov[m.id]}
+                              className="text-xs disabled:opacity-40"
+                              style={{ color: '#A32D2D' }}
+                            >
+                              {deletingMov[m.id] ? '…' : 'Delete'}
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
             </div>
+          )}
+          {movDelError && (
+            <p className="text-xs mt-2" style={{ color: '#A32D2D' }}>{movDelError}</p>
           )}
         </div>
       </div>

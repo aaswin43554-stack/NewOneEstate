@@ -181,19 +181,30 @@ export default function AllocationDetail() {
 
   async function saveReqEdit(reqId) {
     setEditReqSaving(true);
-    const res = await api.put(`/allocations/${id}/requests/${reqId}`, {
-      quantity_bags: parseInt(editingReq.quantity_bags),
-    });
+    const bags = parseInt(editingReq.quantity_bags);
+    if (!bags || bags < 1) { setRowErrors(p => ({ ...p, [reqId]: 'Enter at least 1 bag.' })); setEditReqSaving(false); return; }
+    const res = await api.put(`/allocations/${id}/requests/${reqId}`, { quantity_bags: bags });
     const d = await res.json();
     if (res.ok) { setEditingReq(null); load(); }
     else { setRowErrors(p => ({ ...p, [reqId]: d.error })); }
     setEditReqSaving(false);
   }
 
+  async function deleteReq(reqId) {
+    if (!window.confirm('Delete this request?')) return;
+    setRowActioning(p => ({ ...p, [reqId]: true }));
+    const res = await api.delete(`/allocations/${id}/requests/${reqId}`);
+    const d = await res.json().catch(() => ({}));
+    if (res.ok) { load(); }
+    else { setRowErrors(p => ({ ...p, [reqId]: d.error || 'Failed to delete.' })); }
+    setRowActioning(p => ({ ...p, [reqId]: false }));
+  }
+
   function openEdit() {
     const a = data?.allocation;
     if (!a) return;
     setEditFields({
+      allocation_code:           a.allocation_code || '',
       estate:                    a.estate || '',
       planned_green_quantity_g:  a.planned_green_quantity_g ? (a.planned_green_quantity_g / 1000).toFixed(2) : '',
       planned_bag_size_g:        a.planned_bag_size_g || '',
@@ -209,6 +220,7 @@ export default function AllocationDetail() {
     e.preventDefault();
     setEditSaving(true); setEditError('');
     const body = {
+      allocation_code:           editFields.allocation_code || undefined,
       estate:                    editFields.estate || undefined,
       planned_green_quantity_g:  editFields.planned_green_quantity_g
         ? Math.round(parseFloat(editFields.planned_green_quantity_g) * 1000) : undefined,
@@ -573,6 +585,9 @@ export default function AllocationDetail() {
                                     {rowActioning[r.id] ? '…' : 'Fulfil'}
                                   </button>
                                 )}
+                                <button onClick={() => deleteReq(r.id)} disabled={!!rowActioning[r.id]} className="text-xs transition-colors disabled:opacity-40" style={{ color: '#A32D2D' }}>
+                                  Delete
+                                </button>
                               </>
                             )}
                           </div>
@@ -726,6 +741,14 @@ export default function AllocationDetail() {
               </p>
             )}
             <form onSubmit={saveEdit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-coffee-500 uppercase tracking-wide mb-1.5">Allocation Code</label>
+                <input
+                  value={editFields.allocation_code}
+                  onChange={e => setEditFields(p => ({ ...p, allocation_code: e.target.value }))}
+                  className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg font-mono"
+                />
+              </div>
               <div>
                 <label className="block text-xs font-medium text-coffee-500 uppercase tracking-wide mb-1.5">Estate</label>
                 <input

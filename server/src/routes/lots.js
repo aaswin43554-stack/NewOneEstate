@@ -288,6 +288,49 @@ router.post(
   }
 );
 
+// DELETE /api/lots/:id/movements/:movement_id
+router.delete(
+  '/:id/movements/:movement_id',
+  requireRole('admin', 'roaster'),
+  [param('id').isUUID(), param('movement_id').isUUID()],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows: [movement] } = await client.query(
+        'SELECT * FROM oec_lot_movements WHERE id = $1 AND lot_id = $2 AND tenant_id = $3',
+        [req.params.movement_id, req.params.id, req.user.tenant_id]
+      );
+      if (!movement) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Movement not found' }); }
+      const { rows: [lot] } = await client.query(
+        'SELECT current_weight_g FROM oec_lots WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL FOR UPDATE',
+        [req.params.id, req.user.tenant_id]
+      );
+      if (!lot) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Lot not found' }); }
+      const newWeight = lot.current_weight_g - movement.weight_change_g;
+      if (newWeight < 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: `Cannot delete: reversing this movement would result in negative stock (${newWeight}g).` });
+      }
+      await client.query(
+        'UPDATE oec_lots SET current_weight_g = $1, updated_at = NOW(), updated_by = $2 WHERE id = $3',
+        [newWeight, req.user.id, req.params.id]
+      );
+      await client.query('DELETE FROM oec_lot_movements WHERE id = $1', [movement.id]);
+      await client.query('COMMIT');
+      return res.json({ ok: true, current_weight_g: newWeight });
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      console.error('Delete movement:', err);
+      return res.status(500).json({ error: 'Failed to delete movement' });
+    } finally {
+      client.release();
+    }
+  }
+);
+
 // GET /api/lots/:id/yield-projection
 router.get(
   '/:id/yield-projection',

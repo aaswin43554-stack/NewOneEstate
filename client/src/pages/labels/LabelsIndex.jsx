@@ -205,7 +205,13 @@ export default function LabelsIndex() {
             <div className="flex gap-2">
               <Button variant="ghost" onClick={() => triggerExport('csv')}>CSV</Button>
               <Button variant="ghost" onClick={() => triggerExport('json')}>JSON</Button>
-              <Button variant="primary" onClick={() => { setFilter('unlabelled'); }}>
+              <Button variant="primary" onClick={() => {
+                if (withoutLabel.length > 0) {
+                  navigate(`/labels/${withoutLabel[0].id}`);
+                } else {
+                  setFilter('unlabelled');
+                }
+              }}>
                 + Create Label
               </Button>
             </div>

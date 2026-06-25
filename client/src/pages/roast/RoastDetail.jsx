@@ -357,7 +357,7 @@ export default function RoastDetail() {
     ['DTR',         session.dtr ? `${session.dtr}%` : '—'],
   ];
 
-  const devPhases = session.is_development ? [
+  const devPhases = [
     {
       label: 'Identity',
       rows: [
@@ -432,7 +432,7 @@ export default function RoastDetail() {
         { key: 'roasted_weight_out_g', label: 'Roasted Out (kg)', type: 'number', step: '0.001' },
       ],
     },
-  ] : null;
+  ];
 
   const importCurve = importParsed?.temperature_curve ?? [];
 

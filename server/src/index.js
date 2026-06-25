@@ -172,7 +172,7 @@ app.get('/api/dashboard-stats', requireAuth, async (req, res) => {
       pool.query("SELECT COUNT(*)::int AS active_allocs FROM oec_allocations WHERE tenant_id = $1 AND state != 'allocation_closed' AND deleted_at IS NULL", [tenant_id]),
       pool.query("SELECT COUNT(*)::int AS total_contacts FROM oec_contacts WHERE tenant_id = $1 AND deleted_at IS NULL", [tenant_id]),
       pool.query("SELECT COUNT(*)::int AS total_roasts FROM oec_roast_sessions WHERE tenant_id = $1 AND deleted_at IS NULL", [tenant_id]),
-      pool.query("SELECT COALESCE(SUM(quantity_bags), 0)::int AS requested_bags FROM oec_allocation_requests WHERE tenant_id = $1 AND status != 'fulfilled'", [tenant_id]),
+      pool.query(`SELECT COALESCE(SUM(r.quantity_bags), 0)::int AS requested_bags FROM oec_allocation_requests r JOIN oec_allocations a ON a.id = r.allocation_id WHERE r.tenant_id = $1 AND r.status != 'fulfilled' AND a.state != 'allocation_closed' AND a.deleted_at IS NULL`, [tenant_id]),
       pool.query("SELECT id, allocation_code, state, process FROM oec_allocations WHERE tenant_id = $1 AND state = 'open_for_requests' AND deleted_at IS NULL LIMIT 1", [tenant_id]),
       pool.query("SELECT COUNT(*)::int AS quality_alert_lots FROM oec_lots WHERE tenant_id = $1 AND deleted_at IS NULL AND current_weight_g > 0 AND arrival_date < NOW() - INTERVAL '365 days'", [tenant_id]),
       pool.query(`

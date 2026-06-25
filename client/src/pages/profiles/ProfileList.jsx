@@ -59,6 +59,9 @@ function ProfileCard({ profile, onView, onEdit, onSubmit, onDuplicate, onRetire,
           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs mt-1 ${meta.cls}`}>
             {meta.label}
           </span>
+          {profile.roast_id && (
+            <p className="text-xs text-coffee-400 font-mono mt-1">{profile.roast_id}</p>
+          )}
         </div>
         {/* Sparkline */}
         <div style={{ width: 120, height: 40 }}>

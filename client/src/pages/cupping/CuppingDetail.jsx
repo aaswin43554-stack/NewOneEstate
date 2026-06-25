@@ -73,8 +73,18 @@ function fmtDate(iso) {
   return new Date(iso).toLocaleDateString('en-GB', { timeZone: TZ, dateStyle: 'medium' });
 }
 
+function cupCheckScore(cups) {
+  if (!Array.isArray(cups)) return 0;
+  const n = cups.filter(Boolean).length;
+  if (n === 0) return 0;
+  if (n === 1) return 3;
+  if (n === 2) return 7;
+  return 10;
+}
+
 function CupCheckGrid({ label, cups, score }) {
   if (!Array.isArray(cups) || cups.length === 0) return null;
+  const displayScore = cupCheckScore(cups);
   return (
     <div className="flex items-center justify-between py-2" style={{ borderBottom: '1px solid #F2EAE0' }}>
       <span className="text-sm text-coffee-700 w-32">{label}</span>
@@ -90,7 +100,7 @@ function CupCheckGrid({ label, cups, score }) {
         ))}
       </div>
       <span className="text-sm text-coffee-900 w-12 text-right" style={{ fontWeight: 500 }}>
-        {score ?? cups.filter(Boolean).length * 2} / {cups.length * 2}
+        {displayScore} / 10
       </span>
     </div>
   );
@@ -152,9 +162,9 @@ export default function CuppingDetail() {
 
   // SCA final score calculation
   const scoredTotal = SCA_SCORED_ATTRS.reduce((s, a) => s + (parseFloat(sample?.[`score_${a.key}`]) || 0), 0);
-  const uniformityScore = parseFloat(sample?.score_uniformity) || (Array.isArray(sample?.uniformity_cups) ? sample.uniformity_cups.filter(Boolean).length * 2 : 0);
-  const cleanCupScore   = parseFloat(sample?.score_clean_cup)  || (Array.isArray(sample?.clean_cup_cups)  ? sample.clean_cup_cups.filter(Boolean).length * 2 : 0);
-  const sweetnessScore  = parseFloat(sample?.score_sweetness)  || (Array.isArray(sample?.sweetness_cups)  ? sample.sweetness_cups.filter(Boolean).length * 2 : 0);
+  const uniformityScore = Array.isArray(sample?.uniformity_cups) ? cupCheckScore(sample.uniformity_cups) : (parseFloat(sample?.score_uniformity) || 0);
+  const cleanCupScore   = Array.isArray(sample?.clean_cup_cups)  ? cupCheckScore(sample.clean_cup_cups)  : (parseFloat(sample?.score_clean_cup)  || 0);
+  const sweetnessScore  = Array.isArray(sample?.sweetness_cups)  ? cupCheckScore(sample.sweetness_cups)  : (parseFloat(sample?.score_sweetness)  || 0);
   const defectsTotal    = (sample?.defects_json || []).reduce((s, d) => {
     const mult = d.type === 'fault' ? 4 : 2;
     return s + (parseInt(d.cups_affected) || 0) * (parseInt(d.intensity) || 0) * mult;

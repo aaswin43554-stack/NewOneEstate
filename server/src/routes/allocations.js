@@ -267,7 +267,7 @@ router.put('/:id', requireRole('admin', 'roaster'), async (req, res) => {
   if (!alloc) return res.status(404).json({ error: 'Allocation not found.' });
   if (closedGuard(alloc, res)) return;
 
-  const { estate, planned_green_quantity_g, planned_bag_size_g, planned_price_json,
+  const { estate, allocation_code, planned_green_quantity_g, planned_bag_size_g, planned_price_json,
           window_open_date, window_close_date } = req.body;
   const hasOverride = 'projected_bags_override' in req.body;
   const overrideRaw = req.body.projected_bags_override;
@@ -291,6 +291,11 @@ router.put('/:id', requireRole('admin', 'roaster'), async (req, res) => {
 
   const setClauses = [];
   const params = [];
+
+  if (allocation_code !== undefined) {
+    params.push(allocation_code || null);
+    setClauses.push(`allocation_code = COALESCE($${params.length}, allocation_code)`);
+  }
 
   if (hasCoreFields) {
     params.push(estate || null);
@@ -569,7 +574,11 @@ router.put('/:id/requests/:req_id', requireRole('admin', 'roaster'), async (req,
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Only admins can edit request fields.' });
     const updates = [];
     const params  = [];
-    if (quantity_bags !== undefined) { params.push(parseInt(quantity_bags)); updates.push(`quantity_bags = $${params.length}`); }
+    if (quantity_bags !== undefined) {
+      const bags = parseInt(quantity_bags);
+      if (isNaN(bags) || bags < 1) return res.status(400).json({ error: 'quantity_bags must be at least 1.' });
+      params.push(bags); updates.push(`quantity_bags = $${params.length}`);
+    }
     if (contact_name  !== undefined) { params.push(contact_name);            updates.push(`contact_name = $${params.length}`);  }
     if (channel       !== undefined) { params.push(channel);                 updates.push(`channel = $${params.length}`);       }
     if (notes         !== undefined) { params.push(notes || null);           updates.push(`notes = $${params.length}`);         }
@@ -618,6 +627,25 @@ router.put('/:id/requests/:req_id', requireRole('admin', 'roaster'), async (req,
   } catch (err) {
     console.error('Update request:', err);
     return res.status(500).json({ error: 'Failed to update request.' });
+  }
+});
+
+// DELETE /api/allocations/:id/requests/:req_id
+router.delete('/:id/requests/:req_id', requireRole('admin'), async (req, res) => {
+  const tenant_id = req.user.tenant_id;
+  const alloc = await fetchAllocation(req.params.id, tenant_id);
+  if (!alloc) return res.status(404).json({ error: 'Allocation not found.' });
+  if (closedGuard(alloc, res)) return;
+  try {
+    const { rowCount } = await pool.query(
+      'DELETE FROM oec_allocation_requests WHERE id = $1 AND allocation_id = $2 AND tenant_id = $3',
+      [req.params.req_id, alloc.id, tenant_id]
+    );
+    if (rowCount === 0) return res.status(404).json({ error: 'Request not found.' });
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error('Delete request:', err);
+    return res.status(500).json({ error: 'Failed to delete request.' });
   }
 });
 
