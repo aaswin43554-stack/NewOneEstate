@@ -6,11 +6,22 @@ import Layout from '../components/Layout';
 import YieldCalculator from '../components/YieldCalculator';
 import { Button, FormSelect, FormInput, ProcessBadge } from '../components/ui';
 
+const TZ = 'Asia/Vientiane';
+
 function gToKg(g) { return (g / 1000).toFixed(2); }
 
 function fmtDate(d) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+// A DATE column comes back from the API as a TZ-shifted UTC timestamp (node-pg
+// parses it at the server's local midnight), so a naive .slice(0,10) can land a
+// day early and silently shift the date back on save. Render it in the app's
+// timezone to get the correct YYYY-MM-DD for a date input.
+function toInputDate(v) {
+  if (!v) return '';
+  return new Date(v).toLocaleDateString('en-CA', { timeZone: TZ });
 }
 
 function fmtDateTime(d) {
@@ -79,7 +90,7 @@ export default function LotDetail() {
       estate:           lot.estate,
       process:          lot.process,
       harvest_year:     String(lot.harvest_year),
-      arrival_date:     lot.arrival_date ? lot.arrival_date.slice(0, 10) : '',
+      arrival_date:     toInputDate(lot.arrival_date),
       storage_location: lot.storage_location || '',
       moisture_content: lot.moisture_content != null ? String(lot.moisture_content) : '',
       water_activity:   lot.water_activity   != null ? String(lot.water_activity)   : '',

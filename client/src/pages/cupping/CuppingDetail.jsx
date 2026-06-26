@@ -26,6 +26,13 @@ const PURPOSE_LABELS = {
   sampling:     'Sampling',
 };
 
+// Purposes that can be set when editing (matches the create flow + backend CHECK)
+const EDIT_PURPOSES = [
+  { value: 'development',   label: 'Development' },
+  { value: 'quality_check', label: 'Quality Check' },
+  { value: 'comparative',   label: 'Comparative' },
+];
+
 const SCA_SCORED_ATTRS = [
   { key: 'fragrance_aroma', label: 'Fragrance/Aroma' },
   { key: 'flavor',          label: 'Flavor' },
@@ -85,6 +92,14 @@ function fmtDate(iso) {
   return new Date(iso).toLocaleDateString('en-GB', { timeZone: TZ, dateStyle: 'medium' });
 }
 
+// A DATE column comes back from the API as a UTC timestamp (node-pg parses it at
+// the server's local midnight), so a naive .split('T')[0] can land a day early.
+// Render it in the app's timezone to get the correct YYYY-MM-DD for a date input.
+function toInputDate(v) {
+  if (!v) return '';
+  return new Date(v).toLocaleDateString('en-CA', { timeZone: TZ });
+}
+
 function cupCheckScore(cups) {
   if (!Array.isArray(cups)) return 0;
   const n = cups.filter(Boolean).length;
@@ -134,6 +149,9 @@ export default function CuppingDetail() {
   const [deleteError, setDeleteError] = useState('');
 
   const [editOpen,          setEditOpen]          = useState(false);
+  const [editDate,          setEditDate]          = useState('');
+  const [editPurpose,       setEditPurpose]       = useState('');
+  const [editSessionNotes,  setEditSessionNotes]  = useState('');
   const [editScores,        setEditScores]        = useState({});
   const [editObs,           setEditObs]           = useState({});
   const [editCupChecks,     setEditCupChecks]     = useState({ uniformity: [], clean_cup: [], sweetness: [] });
@@ -167,6 +185,9 @@ export default function CuppingDetail() {
   function openEditModal() {
     if (!sample) return;
     const nCups = session.number_of_cups || 3;
+    setEditDate(toInputDate(session.cupping_date));
+    setEditPurpose(session.cupping_purpose || '');
+    setEditSessionNotes(session.session_notes || '');
     setEditScores({
       fragrance_aroma: parseFloat(sample.score_fragrance_aroma) || 8,
       flavor:          parseFloat(sample.score_flavor)          || 8,
@@ -203,12 +224,28 @@ export default function CuppingDetail() {
   }
 
   async function saveEdit() {
+    if (!editPurpose) { setEditError('Purpose is required.'); return; }
     if (!editDecision) { setEditError('Final decision is required.'); return; }
     if (['adjust', 'reject'].includes(editDecision) && !editDecisionNotes.trim()) {
       setEditError('Decision notes are required for Adjust or Reject.');
       return;
     }
     setEditSaving(true); setEditError('');
+
+    // 1) Save session-level fields (date / purpose / notes)
+    const sessRes = await api.put(`/cupping-sessions/${id}`, {
+      cupping_date:    editDate || undefined,
+      cupping_purpose: editPurpose || undefined,
+      session_notes:   editSessionNotes,
+    });
+    if (!sessRes.ok) {
+      const d = await sessRes.json().catch(() => ({}));
+      setEditError(d.error || 'Failed to update session.');
+      setEditSaving(false);
+      return;
+    }
+
+    // 2) Save the sample scores / observations / decision
     const res = await api.put(`/cupping-sessions/${id}/samples/${sample.id}`, {
       score_fragrance_aroma: editScores.fragrance_aroma,
       score_flavor:          editScores.flavor,
@@ -527,6 +564,52 @@ export default function CuppingDetail() {
                 <button onClick={() => setEditOpen(false)} className="text-coffee-400 hover:text-coffee-700 text-2xl leading-none">×</button>
               </div>
 
+              {/* Session details */}
+              <div>
+                <p className="text-xs text-coffee-400 uppercase tracking-wide mb-3">Session</p>
+                <div className="rounded-xl px-4 py-3 space-y-3" style={{ background: '#FAF6F0', border: '1px solid #F2EAE0' }}>
+                  <div>
+                    <label className="block text-xs text-coffee-500 mb-1">Cupping Date</label>
+                    <input
+                      type="date"
+                      value={editDate}
+                      onChange={e => setEditDate(e.target.value)}
+                      className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-coffee-500 mb-1">Purpose</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {EDIT_PURPOSES.map(opt => (
+                        <button
+                          key={opt.value} type="button"
+                          onClick={() => setEditPurpose(opt.value)}
+                          className="py-2 rounded-lg text-sm border transition-colors"
+                          style={{
+                            background:  editPurpose === opt.value ? '#533A24' : '#FFF',
+                            color:       editPurpose === opt.value ? '#FFF' : '#533A24',
+                            borderColor: editPurpose === opt.value ? '#533A24' : '#E0D0BC',
+                            fontWeight:  editPurpose === opt.value ? 500 : 400,
+                          }}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-coffee-500 mb-1">Session Notes</label>
+                    <textarea
+                      value={editSessionNotes}
+                      onChange={e => setEditSessionNotes(e.target.value)}
+                      rows={2}
+                      placeholder="Optional notes about this cupping session…"
+                      className="w-full px-3 py-2 text-sm border border-coffee-200 rounded-lg bg-white resize-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
               {/* Scored Attributes */}
               <div>
                 <p className="text-xs text-coffee-400 uppercase tracking-wide mb-3">Scores</p>
@@ -768,7 +851,7 @@ export default function CuppingDetail() {
                 <Button
                   type="button"
                   onClick={saveEdit}
-                  disabled={editSaving || !editDecision}
+                  disabled={editSaving || !editDecision || !editPurpose}
                   className="flex-1 justify-center"
                   style={{ background: '#3B6D11', color: '#fff' }}
                 >

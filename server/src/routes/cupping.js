@@ -119,6 +119,70 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+// PUT /api/cupping-sessions/:id  — edit session-level fields (date, purpose, notes)
+router.put('/:id', requireRole('admin', 'roaster'), async (req, res) => {
+  const tenant_id = req.user.tenant_id;
+  const { rows: [session] } = await pool.query(
+    'SELECT * FROM oec_cupping_sessions WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
+    [req.params.id, tenant_id]
+  );
+  if (!session) return res.status(404).json({ error: 'Cupping session not found.' });
+
+  const { cupping_date, cupping_purpose, session_notes } = req.body;
+
+  const VALID_PURPOSES = ['development', 'quality_check', 'comparative'];
+  if (cupping_purpose !== undefined && !VALID_PURPOSES.includes(cupping_purpose)) {
+    return res.status(400).json({ error: `cupping_purpose must be one of: ${VALID_PURPOSES.join(', ')}` });
+  }
+
+  // When the date changes, recompute days_off_roast + early_warning from the
+  // roast session this cupping is based on (the first linked sample), mirroring
+  // the create flow so the "logged before minimum rest" warning stays accurate.
+  let days_off_roast = session.days_off_roast;
+  let early_warning  = session.early_warning;
+  if (cupping_date) {
+    const { rows: [smp] } = await pool.query(
+      'SELECT roast_session_id FROM oec_cupping_samples WHERE cupping_session_id = $1 ORDER BY created_at ASC LIMIT 1',
+      [session.id]
+    );
+    if (smp) {
+      const { rows: [rs] } = await pool.query(
+        'SELECT ended_at FROM oec_roast_sessions WHERE id = $1', [smp.roast_session_id]
+      );
+      if (rs?.ended_at) {
+        const process  = await getProcessFromSession(smp.roast_session_id, tenant_id);
+        days_off_roast = Math.floor((new Date(cupping_date) - new Date(rs.ended_at)) / 86400000);
+        early_warning  = days_off_roast < (REST_DAYS[process] || 4);
+      }
+    }
+  }
+
+  try {
+    const { rows: [updated] } = await pool.query(
+      `UPDATE oec_cupping_sessions SET
+         cupping_date    = COALESCE($1, cupping_date),
+         cupping_purpose = COALESCE($2, cupping_purpose),
+         session_notes   = $3,
+         days_off_roast  = $4,
+         early_warning   = $5,
+         updated_at = NOW(), updated_by = $6
+       WHERE id = $7 RETURNING *`,
+      [
+        cupping_date || null,
+        cupping_purpose || null,
+        session_notes !== undefined ? (session_notes || null) : session.session_notes,
+        days_off_roast,
+        early_warning,
+        req.user.id, session.id,
+      ]
+    );
+    return res.json({ session: updated });
+  } catch (err) {
+    console.error('Update cupping session:', err);
+    return res.status(500).json({ error: 'Failed to update cupping session.' });
+  }
+});
+
 // POST /api/cupping-sessions
 router.post('/', requireRole('admin', 'roaster'), async (req, res) => {
   const tenant_id = req.user.tenant_id;

@@ -53,6 +53,15 @@ function fmtDate(iso) {
   return new Date(iso).toLocaleString('en-GB', { timeZone: TZ, dateStyle: 'medium', timeStyle: 'short' });
 }
 
+// A DATE column comes back from the API as a TZ-shifted UTC timestamp (node-pg
+// parses it at the server's local midnight), so a naive .split('T')[0] can land a
+// day early and silently shift the date back on save. Render it in the app's
+// timezone to get the correct YYYY-MM-DD for a date input.
+function toInputDate(v) {
+  if (!v) return '';
+  return new Date(v).toLocaleDateString('en-CA', { timeZone: TZ });
+}
+
 export default function AllocationDetail() {
   const { id } = useParams();
   const { user } = useAuth();
@@ -208,8 +217,8 @@ export default function AllocationDetail() {
       estate:                    a.estate || '',
       planned_green_quantity_g:  a.planned_green_quantity_g ? (a.planned_green_quantity_g / 1000).toFixed(2) : '',
       planned_bag_size_g:        a.planned_bag_size_g || '',
-      window_open_date:          a.window_open_date  ? a.window_open_date.split('T')[0] : '',
-      window_close_date:         a.window_close_date ? a.window_close_date.split('T')[0] : '',
+      window_open_date:          toInputDate(a.window_open_date),
+      window_close_date:         toInputDate(a.window_close_date),
       projected_bags_override:   a.projected_bags_override != null ? String(a.projected_bags_override) : '',
     });
     setEditError('');
