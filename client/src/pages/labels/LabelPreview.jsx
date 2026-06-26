@@ -13,41 +13,117 @@ const PROCESS_LABEL = {
   Anaerobic: 'Anaerobic Process',
 };
 
+function fmtRoastDates(start, end) {
+  if (!start) return null;
+  const s = new Date(start);
+  const sDay = s.getUTCDate();
+  const sMon = String(s.getUTCMonth() + 1).padStart(2, '0');
+  if (!end || start === end) return `${sDay}/${sMon}`;
+  const e = new Date(end);
+  const eDay = e.getUTCDate();
+  const eMon = String(e.getUTCMonth() + 1).padStart(2, '0');
+  return sMon === eMon ? `${sDay}-${eDay}/${eMon}` : `${sDay}/${sMon}-${eDay}/${eMon}`;
+}
+
 function LabelCard({ label, form }) {
   const d = { ...label, ...form };
 
-  if (d.label_image) {
-    return (
-      <div
-        className="label-card rounded-2xl overflow-hidden shadow-sm"
-        style={{ border: '1px solid #C8A87A', maxWidth: 380, width: '100%' }}
-      >
-        <img
-          src={d.label_image}
-          alt="Label"
-          style={{ width: '100%', display: 'block' }}
-        />
-      </div>
-    );
-  }
+  const qrSrc = d.label_image
+    ? d.label_image
+    : d.qr_code_base64
+      ? `data:image/png;base64,${d.qr_code_base64}`
+      : null;
+
+  const flavours = d.flavour_notes
+    ? d.flavour_notes.split(/[/\n]/).map(f => f.trim()).filter(Boolean)
+    : [];
+
+  const roastStr = fmtRoastDates(d.roast_date_start, d.roast_date_end);
+
+  const divider = { borderBottom: '1px solid #E0D0BC' };
+  const sf = { fontFamily: 'system-ui, sans-serif' };
 
   return (
     <div
       className="label-card rounded-2xl overflow-hidden shadow-sm"
       style={{ border: '1px solid #C8A87A', background: '#FDFAF6', maxWidth: 380, width: '100%' }}
     >
-      <div className="px-5 py-8 text-center">
-        <p style={{ fontSize: 12, color: '#A8896A' }}>Upload a label image to preview</p>
+      {/* Brand header */}
+      <div style={{ ...divider, padding: '24px 28px 16px', textAlign: 'center' }}>
+        <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: '0.12em', color: '#1A0A00', fontFamily: "'Georgia', serif" }}>
+          ONE ESTATE
+        </div>
+        <div style={{ fontSize: 8.5, letterSpacing: '0.22em', color: '#8B6B4A', marginTop: 3, ...sf }}>
+          SINGLE-ESTATE SPECIALTY COFFEE
+        </div>
       </div>
-    </div>
-  );
-}
 
-function LabelRow({ label, value }) {
-  return (
-    <div className="flex gap-2">
-      <span style={{ color: '#A8896A', minWidth: 52 }}>{label}</span>
-      <span style={{ color: '#2A1A0C', fontWeight: 500 }}>{value}</span>
+      {/* Allocation code */}
+      <div style={{ ...divider, padding: '12px 28px 14px' }}>
+        <div style={{ fontSize: 10, color: '#8B6B4A', letterSpacing: '0.06em', ...sf }}>Allocation</div>
+        <div style={{ fontSize: 22, fontWeight: 700, color: '#1A0A00', letterSpacing: '0.04em', fontFamily: "'Georgia', serif" }}>
+          {d.allocation_code || '—'}
+        </div>
+      </div>
+
+      {/* Estate + process */}
+      <div style={{ ...divider, padding: '12px 28px 14px' }}>
+        <div style={{ fontSize: 15, fontWeight: 600, color: '#1A0A00', fontFamily: "'Georgia', serif" }}>
+          {d.estate_location || '—'}
+        </div>
+        <div style={{ fontSize: 10.5, color: '#8B6B4A', marginTop: 3, ...sf }}>
+          {PROCESS_LABEL[d.process] || d.process || ''}
+        </div>
+      </div>
+
+      {/* Detail rows */}
+      <div style={{ ...divider, padding: '0 28px' }}>
+        {[
+          ['Harvest', d.harvest_year || '—'],
+          ['Variety', d.variety      || '—'],
+          ['Roast',   d.roast_level  || '—'],
+        ].map(([k, v], i, arr) => (
+          <div
+            key={k}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 12,
+              padding: '8px 0',
+              ...(i < arr.length - 1 ? { borderBottom: '1px solid #EDE0CC' } : {}),
+            }}
+          >
+            <span style={{ fontSize: 11, color: '#8B6B4A', minWidth: 54, ...sf }}>{k}</span>
+            <span style={{ width: 1, height: 13, background: '#D4C4AC', flexShrink: 0 }} />
+            <span style={{ fontSize: 11, color: '#1A0A00', ...sf }}>{v}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Profile + QR */}
+      <div style={{ ...divider, padding: '10px 28px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 10.5, color: '#8B6B4A', marginBottom: 4, ...sf }}>Profile</div>
+          {flavours.length > 0
+            ? flavours.map((f, i) => (
+                <div key={i} style={{ fontSize: 11, color: '#1A0A00', lineHeight: 1.65, ...sf }}>{f}</div>
+              ))
+            : <div style={{ fontSize: 11, color: '#C8A87A', ...sf }}>—</div>
+          }
+        </div>
+        {qrSrc && (
+          <img src={qrSrc} alt="QR" style={{ width: 58, height: 58, flexShrink: 0 }} />
+        )}
+      </div>
+
+      {/* Footer */}
+      <div style={{ padding: '10px 28px', display: 'flex', gap: 8, alignItems: 'center' }}>
+        <span style={{ fontSize: 10, color: '#8B6B4A', ...sf }}>Net Wt. {d.net_weight_g || 200}g</span>
+        {roastStr && (
+          <>
+            <span style={{ fontSize: 10, color: '#C8A87A' }}>•</span>
+            <span style={{ fontSize: 10, color: '#8B6B4A', ...sf }}>Roasted {roastStr}</span>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -336,9 +412,9 @@ function FieldsForm({ form, set, fileRef, onImageUpload, footer }) {
         />
       </div>
 
-      {/* Image upload */}
+      {/* QR code upload */}
       <div>
-        <label className="text-xs text-coffee-500 block mb-2">Label Image (optional)</label>
+        <label className="text-xs text-coffee-500 block mb-2">QR Code (optional — replaces auto-generated)</label>
         <input
           type="file"
           accept="image/*"
