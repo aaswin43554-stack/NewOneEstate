@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Fragment } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Layout from '../../components/Layout';
 import { api } from '../../lib/api';
@@ -40,87 +40,92 @@ function LabelCard({ label, form }) {
 
   const roastStr = fmtRoastDates(d.roast_date_start, d.roast_date_end);
 
-  const divider = { borderBottom: '1px solid #E0D0BC' };
-  const sf = { fontFamily: 'system-ui, sans-serif' };
+  // Match the printed OEC label: classic serif throughout, ruled-grid rows.
+  const serif = "'Times New Roman', Georgia, 'Liberation Serif', serif";
+  const ink   = '#241308';   // near-black brown for primary text
+  const muted = '#8A6E4E';   // grey-brown for labels
+  const line  = '#D9C7AC';   // hairline rules
+
+  const cellLabel = {
+    fontFamily: serif, fontSize: 12.5, color: muted,
+    padding: '11px 12px 11px 28px',
+    borderBottom: `1px solid ${line}`, borderRight: `1px solid ${line}`,
+  };
+  const cellValue = {
+    fontFamily: serif, fontSize: 13.5, color: ink,
+    padding: '11px 28px 11px 16px',
+    borderBottom: `1px solid ${line}`,
+  };
 
   return (
     <div
-      className="label-card rounded-2xl overflow-hidden shadow-sm"
-      style={{ border: '1px solid #C8A87A', background: '#FDFAF6', maxWidth: 380, width: '100%' }}
+      className="label-card overflow-hidden shadow-sm"
+      style={{ border: `1px solid ${line}`, borderRadius: 6, background: '#FFFDF9', maxWidth: 380, width: '100%' }}
     >
       {/* Brand header */}
-      <div style={{ ...divider, padding: '24px 28px 16px', textAlign: 'center' }}>
-        <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: '0.12em', color: '#1A0A00', fontFamily: "'Georgia', serif" }}>
+      <div style={{ borderBottom: `1px solid ${line}`, padding: '26px 28px 18px', textAlign: 'center' }}>
+        <div style={{ fontFamily: serif, fontSize: 29, fontWeight: 400, letterSpacing: '0.11em', color: ink, lineHeight: 1 }}>
           ONE ESTATE
         </div>
-        <div style={{ fontSize: 8.5, letterSpacing: '0.22em', color: '#8B6B4A', marginTop: 3, ...sf }}>
+        <div style={{ fontFamily: serif, fontSize: 9, letterSpacing: '0.26em', color: muted, marginTop: 7 }}>
           SINGLE-ESTATE SPECIALTY COFFEE
         </div>
       </div>
 
       {/* Allocation code */}
-      <div style={{ ...divider, padding: '12px 28px 14px' }}>
-        <div style={{ fontSize: 10, color: '#8B6B4A', letterSpacing: '0.06em', ...sf }}>Allocation</div>
-        <div style={{ fontSize: 22, fontWeight: 700, color: '#1A0A00', letterSpacing: '0.04em', fontFamily: "'Georgia', serif" }}>
+      <div style={{ borderBottom: `1px solid ${line}`, padding: '14px 28px 16px' }}>
+        <div style={{ fontFamily: serif, fontSize: 11, color: muted }}>Allocation</div>
+        <div style={{ fontFamily: serif, fontSize: 26, fontWeight: 400, color: ink, letterSpacing: '0.02em', lineHeight: 1.15 }}>
           {d.allocation_code || '—'}
         </div>
       </div>
 
       {/* Estate + process */}
-      <div style={{ ...divider, padding: '12px 28px 14px' }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: '#1A0A00', fontFamily: "'Georgia', serif" }}>
+      <div style={{ borderBottom: `1px solid ${line}`, padding: '15px 28px 16px' }}>
+        <div style={{ fontFamily: serif, fontSize: 20, fontWeight: 400, color: ink, lineHeight: 1.2 }}>
           {d.estate_location || '—'}
         </div>
-        <div style={{ fontSize: 10.5, color: '#8B6B4A', marginTop: 3, ...sf }}>
+        <div style={{ fontFamily: serif, fontSize: 12, color: muted, marginTop: 4 }}>
           {PROCESS_LABEL[d.process] || d.process || ''}
         </div>
       </div>
 
-      {/* Detail rows */}
-      <div style={{ ...divider, padding: '0 28px' }}>
+      {/* Detail grid — ruled rows with a continuous vertical divider */}
+      <div style={{ display: 'grid', gridTemplateColumns: '33% 1fr' }}>
         {[
           ['Harvest', d.harvest_year || '—'],
           ['Variety', d.variety      || '—'],
           ['Roast',   d.roast_level  || '—'],
-        ].map(([k, v], i, arr) => (
-          <div
-            key={k}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 12,
-              padding: '8px 0',
-              ...(i < arr.length - 1 ? { borderBottom: '1px solid #EDE0CC' } : {}),
-            }}
-          >
-            <span style={{ fontSize: 11, color: '#8B6B4A', minWidth: 54, ...sf }}>{k}</span>
-            <span style={{ width: 1, height: 13, background: '#D4C4AC', flexShrink: 0 }} />
-            <span style={{ fontSize: 11, color: '#1A0A00', ...sf }}>{v}</span>
-          </div>
+        ].map(([k, v]) => (
+          <Fragment key={k}>
+            <div style={cellLabel}>{k}</div>
+            <div style={cellValue}>{v}</div>
+          </Fragment>
         ))}
-      </div>
 
-      {/* Profile + QR */}
-      <div style={{ ...divider, padding: '10px 28px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 10.5, color: '#8B6B4A', marginBottom: 4, ...sf }}>Profile</div>
-          {flavours.length > 0
-            ? flavours.map((f, i) => (
-                <div key={i} style={{ fontSize: 11, color: '#1A0A00', lineHeight: 1.65, ...sf }}>{f}</div>
-              ))
-            : <div style={{ fontSize: 11, color: '#C8A87A', ...sf }}>—</div>
-          }
+        {/* Profile row (multi-line + QR) */}
+        <div style={cellLabel}>Profile</div>
+        <div style={{ ...cellValue, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+          <div>
+            {flavours.length > 0
+              ? flavours.map((f, i) => (
+                  <div key={i} style={{ lineHeight: 1.5 }}>{f}</div>
+                ))
+              : '—'}
+          </div>
+          {qrSrc && (
+            <img src={qrSrc} alt="QR" style={{ width: 62, height: 62, flexShrink: 0 }} />
+          )}
         </div>
-        {qrSrc && (
-          <img src={qrSrc} alt="QR" style={{ width: 58, height: 58, flexShrink: 0 }} />
-        )}
       </div>
 
       {/* Footer */}
-      <div style={{ padding: '10px 28px', display: 'flex', gap: 8, alignItems: 'center' }}>
-        <span style={{ fontSize: 10, color: '#8B6B4A', ...sf }}>Net Wt. {d.net_weight_g || 200}g</span>
+      <div style={{ padding: '12px 28px 14px', fontFamily: serif }}>
+        <span style={{ fontSize: 11, color: muted }}>Net Wt. {d.net_weight_g || 200}g</span>
         {roastStr && (
           <>
-            <span style={{ fontSize: 10, color: '#C8A87A' }}>•</span>
-            <span style={{ fontSize: 10, color: '#8B6B4A', ...sf }}>Roasted {roastStr}</span>
+            <span style={{ fontSize: 11, color: line, margin: '0 9px' }}>•</span>
+            <span style={{ fontSize: 11, color: muted }}>Roasted {roastStr}</span>
           </>
         )}
       </div>
