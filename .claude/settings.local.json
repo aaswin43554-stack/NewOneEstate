@@ -62,7 +62,8 @@
       "PowerShell(Get-Job *)",
       "Bash(echo \"SERVER_PID=$!\")",
       "Bash(grep -v \"^#\\\\|//\")",
-      "Bash(git pull *)"
+      "Bash(git pull *)",
+      "WebFetch(domain:newoneestate.onrender.com)"
     ]
   }
 }

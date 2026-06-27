@@ -605,22 +605,6 @@ router.put('/:id/requests/:req_id', requireRole('admin', 'roaster'), async (req,
     return res.status(400).json({ error: `Cannot transition from '${request.status}' to '${newStatus}'.` });
   }
 
-  if (newStatus === 'confirmed') {
-    const { rows: [agg] } = await pool.query(
-      `SELECT COALESCE(SUM(quantity_bags), 0)::int AS total
-       FROM oec_allocation_requests
-       WHERE allocation_id = $1 AND status = 'confirmed' AND id != $2`,
-      [alloc.id, request.id]
-    );
-    const newTotal = agg.total + request.quantity_bags;
-    const projected = getProjectedBags(alloc);
-    if (newTotal > projected) {
-      return res.status(400).json({
-        error: `Confirming this would bring total to ${newTotal} bags, exceeding projected yield of ${projected} bags.`,
-      });
-    }
-  }
-
   try {
     const { rows: [updated] } = await pool.query(
       `UPDATE oec_allocation_requests SET status = $1, updated_at = NOW(), updated_by = $2

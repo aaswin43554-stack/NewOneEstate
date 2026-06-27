@@ -28,11 +28,24 @@ function fmtRoastDates(start, end) {
 function LabelCard({ label, form }) {
   const d = { ...label, ...form };
 
-  const qrSrc = d.label_image
-    ? d.label_image
-    : d.qr_code_base64
-      ? `data:image/png;base64,${d.qr_code_base64}`
-      : null;
+  if (d.label_image) {
+    return (
+      <div
+        className="label-card overflow-hidden shadow-sm"
+        style={{ border: '1px solid #D9C7AC', borderRadius: 6, maxWidth: 380, width: '100%' }}
+      >
+        <img
+          src={d.label_image}
+          alt="Label"
+          style={{ width: '100%', display: 'block' }}
+        />
+      </div>
+    );
+  }
+
+  const qrSrc = d.qr_code_base64
+    ? `data:image/png;base64,${d.qr_code_base64}`
+    : null;
 
   const flavours = d.flavour_notes
     ? d.flavour_notes.split(/[/\n]/).map(f => f.trim()).filter(Boolean)

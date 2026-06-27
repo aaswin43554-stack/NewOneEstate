@@ -130,14 +130,6 @@ async function checkTransitionPreconditions(allocation, to_state, tenant_id) {
         'No confirmed requests. Confirm at least one request before starting production.',
     });
 
-    const projected = calculateProjectedBags(planned_green_quantity_g, planned_bag_size_g, process);
-    checks.push({
-      label: 'Bag count within yield',
-      passed: totalConfirmed <= projected,
-      reason: totalConfirmed <= projected ? null :
-        `Confirmed bags (${totalConfirmed}) exceed projected yield (${projected}).`,
-    });
-
     const allocLots = await getAllocationLots(allocation);
     const lotIds = allocLots.map(l => l.lot_id);
     let reservedCount = 0;
