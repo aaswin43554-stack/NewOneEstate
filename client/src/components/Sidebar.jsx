@@ -36,8 +36,8 @@ const GROUPS = [
 function CoffeeBeanIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <ellipse cx="12" cy="12" rx="7" ry="10" stroke="#eda872" strokeWidth="1.5" />
-      <path d="M12 4 Q8 8 12 12 Q16 16 12 20" stroke="#eda872" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+      <ellipse cx="12" cy="12" rx="7" ry="10" stroke="#A3A3A3" strokeWidth="1.5" />
+      <path d="M12 4 Q8 8 12 12 Q16 16 12 20" stroke="#A3A3A3" strokeWidth="1.5" strokeLinecap="round" fill="none" />
     </svg>
   );
 }
@@ -72,7 +72,7 @@ export default function Sidebar({ open, onClose }) {
       {open && (
         <div
           className="fixed inset-0 z-20 md:hidden"
-          style={{ background: 'rgba(34,21,8,0.25)' }}
+          style={{ background: 'rgba(0,0,0,0.4)' }}
           onClick={onClose}
         />
       )}
@@ -144,7 +144,7 @@ export default function Sidebar({ open, onClose }) {
                     <>
                       <Icon
                         size={14}
-                        style={{ color: isActive ? '#ffffff' : '#eda872', flexShrink: 0 }}
+                        style={{ color: isActive ? '#ffffff' : '#A3A3A3', flexShrink: 0 }}
                       />
                       <span style={{ fontWeight: isActive ? 600 : 400 }}>{label}</span>
                     </>

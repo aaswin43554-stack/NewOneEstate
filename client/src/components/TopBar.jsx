@@ -150,7 +150,7 @@ export default function TopBar({ onMenuOpen }) {
   return (
     <header
       className="flex items-center justify-between bg-white px-5"
-      style={{ height: 56, borderBottom: '1px solid #f5cba8', flexShrink: 0 }}
+      style={{ height: 56, borderBottom: '1px solid #E5E5E5', flexShrink: 0 }}
     >
       {/* Left: mobile menu + back button + breadcrumb */}
       <div className="flex items-center gap-2">

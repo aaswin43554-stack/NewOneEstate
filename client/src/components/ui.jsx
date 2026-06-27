@@ -19,15 +19,15 @@ export function Button({ variant = 'primary', size = 'md', children, className =
   };
 
   const variants = {
-    primary:     'bg-coffee-700 text-white hover:bg-coffee-800',
+    primary:     'bg-coffee-900 text-white hover:bg-coffee-700',
     secondary:   'bg-white border border-coffee-200 text-coffee-700 hover:bg-coffee-50',
     ghost:       'text-coffee-500 hover:text-coffee-700 hover:bg-coffee-100',
-    destructive: 'text-[#A32D2D] hover:text-[#A32D2D]',
+    destructive: 'text-coffee-900 hover:text-coffee-700',
   };
 
   const destructiveStyle =
     variant === 'destructive'
-      ? { background: '#FCEBEB' }
+      ? { background: '#F0F0F0' }
       : {};
 
   return (
@@ -43,12 +43,12 @@ export function Button({ variant = 'primary', size = 'md', children, className =
 
 // ─── StatusBadge ───────────────────────────────────────────────────────────────
 const STATUS_META = {
-  draft:        { cls: 'badge-draft',        dot: '#888780', label: 'Draft' },
-  under_review: { cls: 'badge-under-review', dot: '#BA7517', label: 'Under Review' },
-  published:    { cls: 'badge-published',    dot: '#3B6D11', label: 'Published' },
-  active:       { cls: 'badge-published',    dot: '#3B6D11', label: 'Active' },
-  missing:      { cls: 'badge-missing',      dot: '#A32D2D', label: 'Missing' },
-  archived:     { cls: 'badge-draft',        dot: '#888780', label: 'Archived' },
+  draft:        { cls: 'badge-draft',        dot: '#A3A3A3', label: 'Draft' },
+  under_review: { cls: 'badge-under-review', dot: '#404040', label: 'Under Review' },
+  published:    { cls: 'badge-published',    dot: '#FFFFFF', label: 'Published' },
+  active:       { cls: 'badge-published',    dot: '#FFFFFF', label: 'Active' },
+  missing:      { cls: 'badge-missing',      dot: '#0A0A0A', label: 'Missing' },
+  archived:     { cls: 'badge-draft',        dot: '#A3A3A3', label: 'Archived' },
 };
 
 export function StatusBadge({ status, label }) {
@@ -84,7 +84,7 @@ export function ProcessBadge({ process }) {
 }
 
 // ─── StatCard ──────────────────────────────────────────────────────────────────
-export function StatCard({ label, value, trend, trendUp, accentColor = '#A8896A', className = '' }) {
+export function StatCard({ label, value, trend, trendUp, accentColor = '#A3A3A3', className = '' }) {
   return (
     <div
       className={`bg-white border border-coffee-200 rounded-xl p-5 ${className}`}
@@ -165,8 +165,8 @@ export function DataTable({
                         style={{
                           color:
                             sortCol === col.key && sortDir === 'asc'
-                              ? '#6F5035'
-                              : '#C9B49A',
+                              ? '#0A0A0A'
+                              : '#D4D4D4',
                         }}
                       />
                       <ChevronDown
@@ -174,8 +174,8 @@ export function DataTable({
                         style={{
                           color:
                             sortCol === col.key && sortDir === 'desc'
-                              ? '#6F5035'
-                              : '#C9B49A',
+                              ? '#0A0A0A'
+                              : '#D4D4D4',
                         }}
                       />
                     </span>
@@ -216,7 +216,7 @@ export function DataTable({
                 }`}
                 style={{
                   background:
-                    hoveredRow === (row[keyField] || idx) ? '#FDFAF6' : '#FFFFFF',
+                    hoveredRow === (row[keyField] || idx) ? '#F5F5F5' : '#FFFFFF',
                 }}
               >
                 {columns.map(col => (
@@ -366,7 +366,7 @@ export function RightPanel({ open, onClose, title, children, width = 400 }) {
       <div
         ref={overlayRef}
         className="flex-1"
-        style={{ background: 'rgba(34, 21, 8, 0.20)' }}
+        style={{ background: 'rgba(0, 0, 0, 0.25)' }}
         onClick={onClose}
       />
       {/* Panel */}
@@ -396,10 +396,10 @@ export function Toast({ message, type = 'info', onDismiss }) {
   }, [onDismiss]);
 
   const colors = {
-    info:    { bg: '#F2EAE0', text: '#533A24' },
-    success: { bg: '#EAF3DE', text: '#3B6D11' },
-    error:   { bg: '#FCEBEB', text: '#A32D2D' },
-    warning: { bg: '#FAEEDA', text: '#BA7517' },
+    info:    { bg: '#F0F0F0', text: '#262626' },
+    success: { bg: '#E5E5E5', text: '#0A0A0A' },
+    error:   { bg: '#0A0A0A', text: '#FFFFFF' },
+    warning: { bg: '#D4D4D4', text: '#171717' },
   };
   const c = colors[type] || colors.info;
 
@@ -430,8 +430,8 @@ export function FilterPills({ options, value, onChange, className = '' }) {
             onClick={() => onChange(optVal)}
             className="h-7 px-3 rounded-full text-xs transition-colors duration-150"
             style={{
-              background: isActive ? '#533A24' : '#F2EAE0',
-              color:      isActive ? '#FFFFFF' : '#8B6A47',
+              background: isActive ? '#0A0A0A' : '#F0F0F0',
+              color:      isActive ? '#FFFFFF' : '#525252',
               fontWeight: isActive ? 500 : 400,
             }}
           >
