@@ -36,8 +36,8 @@ const GROUPS = [
 function CoffeeBeanIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <ellipse cx="12" cy="12" rx="7" ry="10" stroke="#6F5035" strokeWidth="1.5" />
-      <path d="M12 4 Q8 8 12 12 Q16 16 12 20" stroke="#6F5035" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+      <ellipse cx="12" cy="12" rx="7" ry="10" stroke="#eda872" strokeWidth="1.5" />
+      <path d="M12 4 Q8 8 12 12 Q16 16 12 20" stroke="#eda872" strokeWidth="1.5" strokeLinecap="round" fill="none" />
     </svg>
   );
 }
@@ -78,9 +78,9 @@ export default function Sidebar({ open, onClose }) {
       )}
 
       <aside
-        style={{ width: 220, borderRight: '1px solid #E0D0BC' }}
+        style={{ width: 220, borderRight: '1px solid #4a1e0d' }}
         className={`
-          fixed top-0 left-0 h-full bg-coffee-50 z-30 flex flex-col
+          fixed top-0 left-0 h-full bg-coffee-900 z-30 flex flex-col
           transform transition-transform duration-200
           ${open ? 'translate-x-0' : '-translate-x-full'}
           md:translate-x-0 md:static md:z-auto
@@ -90,14 +90,14 @@ export default function Sidebar({ open, onClose }) {
         <div className="flex items-center gap-2.5 px-4 pt-5 pb-4">
           <CoffeeBeanIcon />
           <span
-            className="text-coffee-700 tracking-tight"
-            style={{ fontSize: 14, fontWeight: 500 }}
+            className="text-white tracking-tight"
+            style={{ fontSize: 14, fontWeight: 600 }}
           >
             OEC Ops
           </span>
           {/* Mobile close */}
           <button
-            className="ml-auto md:hidden text-coffee-400 hover:text-coffee-700"
+            className="ml-auto md:hidden text-coffee-400 hover:text-white"
             onClick={onClose}
           >
             ✕
@@ -108,7 +108,7 @@ export default function Sidebar({ open, onClose }) {
         {user && (
           <div className="px-4 mb-4">
             <span
-              className="inline-block px-2 py-0.5 rounded-full text-coffee-400 bg-coffee-100"
+              className="inline-block px-2 py-0.5 rounded-full text-coffee-300 bg-coffee-800"
               style={{ fontSize: 11 }}
             >
               {roleLabel(user.role)}
@@ -121,7 +121,7 @@ export default function Sidebar({ open, onClose }) {
           {GROUPS.map(group => (
             <div key={group.label}>
               <p
-                className="text-coffee-300 uppercase px-3 mb-1"
+                className="text-coffee-600 uppercase px-3 mb-1"
                 style={{ fontSize: 10, letterSpacing: '0.08em' }}
               >
                 {group.label}
@@ -133,10 +133,10 @@ export default function Sidebar({ open, onClose }) {
                   end={exact}
                   onClick={onClose}
                   className={({ isActive }) =>
-                    `flex items-center gap-2.5 px-3 h-9 text-sm transition-colors duration-150 ${
+                    `flex items-center gap-2.5 px-3 h-9 text-sm transition-colors duration-150 rounded-md ${
                       isActive
-                        ? 'bg-coffee-100 text-coffee-700 rounded-r-[6px] border-l-[3px] border-coffee-600'
-                        : 'text-coffee-500 hover:text-coffee-700 hover:bg-coffee-100 rounded-r-[6px]'
+                        ? 'bg-coffee-700 text-white'
+                        : 'text-coffee-300 hover:text-white hover:bg-coffee-800'
                     }`
                   }
                 >
@@ -144,9 +144,9 @@ export default function Sidebar({ open, onClose }) {
                     <>
                       <Icon
                         size={14}
-                        style={{ color: isActive ? '#533A24' : '#8B6A47', flexShrink: 0 }}
+                        style={{ color: isActive ? '#ffffff' : '#eda872', flexShrink: 0 }}
                       />
-                      <span style={{ fontWeight: isActive ? 500 : 400 }}>{label}</span>
+                      <span style={{ fontWeight: isActive ? 600 : 400 }}>{label}</span>
                     </>
                   )}
                 </NavLink>
@@ -157,17 +157,17 @@ export default function Sidebar({ open, onClose }) {
 
         {/* User footer */}
         {user && (
-          <div className="px-4 py-4 border-t border-coffee-200">
+          <div className="px-4 py-4 border-t border-coffee-800">
             <div className="flex items-center gap-2.5 mb-2">
               <div
-                className="flex items-center justify-center rounded-full flex-shrink-0 text-coffee-600 bg-coffee-200"
+                className="flex items-center justify-center rounded-full flex-shrink-0 text-coffee-200 bg-coffee-700"
                 style={{ width: 32, height: 32, fontSize: 12, fontWeight: 500 }}
               >
                 {initials(user.name)}
               </div>
               <div className="min-w-0">
                 <p
-                  className="text-coffee-800 truncate"
+                  className="text-white truncate"
                   style={{ fontSize: 13, fontWeight: 500 }}
                 >
                   {user.name}
@@ -177,7 +177,7 @@ export default function Sidebar({ open, onClose }) {
             <div className="flex items-center justify-between">
               <button
                 onClick={handleLogout}
-                className="flex items-center gap-1.5 text-coffee-400 hover:text-coffee-700 transition-colors"
+                className="flex items-center gap-1.5 text-coffee-400 hover:text-white transition-colors"
                 style={{ fontSize: 12 }}
               >
                 <LogOut size={12} />
@@ -187,7 +187,7 @@ export default function Sidebar({ open, onClose }) {
                 to="/onboarding"
                 onClick={onClose}
                 title="Setup guide"
-                className="flex items-center gap-1 text-coffee-300 hover:text-coffee-500 transition-colors"
+                className="flex items-center gap-1 text-coffee-600 hover:text-coffee-300 transition-colors"
                 style={{ fontSize: 11 }}
               >
                 <BookOpen size={12} />

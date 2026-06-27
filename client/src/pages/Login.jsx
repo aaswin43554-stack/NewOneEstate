@@ -3,14 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
-function CoffeeBeanIcon() {
-  return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <ellipse cx="12" cy="12" rx="7" ry="10" stroke="#6F5035" strokeWidth="1.5" />
-      <path d="M12 4 Q8 8 12 12 Q16 16 12 20" stroke="#6F5035" strokeWidth="1.5" strokeLinecap="round" fill="none" />
-    </svg>
-  );
-}
 
 function slugify(str) {
   return str.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -18,10 +10,8 @@ function slugify(str) {
 
 function Field({ label, type = 'text', value, onChange, placeholder, autoComplete, required }) {
   return (
-    <div className="flex flex-col gap-1">
-      <label className="text-sm text-coffee-600" style={{ fontWeight: 500 }}>
-        {label}
-      </label>
+    <div>
+      <label className="block text-sm font-medium text-coffee-700 mb-1.5">{label}</label>
       <input
         type={type}
         value={value}
@@ -29,7 +19,7 @@ function Field({ label, type = 'text', value, onChange, placeholder, autoComplet
         placeholder={placeholder}
         autoComplete={autoComplete}
         required={required}
-        className="h-9 px-3 text-sm text-coffee-900 bg-white border border-coffee-200 rounded-lg focus:border-coffee-500 focus:ring-2 focus:ring-coffee-100 transition-colors"
+        className="w-full border border-coffee-200 rounded-xl px-3 py-2.5 text-coffee-900 text-sm focus:outline-none focus:ring-2 focus:ring-coffee-400 focus:border-transparent"
       />
     </div>
   );
@@ -84,42 +74,27 @@ export default function Login() {
   }
 
   return (
-    <div
-      className="min-h-screen flex items-center justify-center p-4"
-      style={{ background: '#FDFAF6' }}
-    >
-      <div style={{ width: '100%', maxWidth: 360 }}>
+    <div className="min-h-screen bg-coffee-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-sm">
         {/* Brand */}
         <div className="text-center mb-8">
-          <div
-            className="inline-flex items-center justify-center rounded-2xl mb-3"
-            style={{ width: 48, height: 48, background: '#FAF6F0', border: '1px solid #E0D0BC' }}
-          >
-            <CoffeeBeanIcon />
+          <div className="inline-flex items-center justify-center w-12 h-12 bg-coffee-800 rounded-2xl mb-4">
+            <span className="text-white font-bold text-lg">OEC</span>
           </div>
-          <h1 className="text-base text-coffee-900" style={{ fontWeight: 500 }}>
-            One Estate Coffee
-          </h1>
-          <p className="text-sm text-coffee-400 mt-0.5">Ops Platform</p>
+          <h1 className="text-xl font-bold text-coffee-900">One Estate Coffee</h1>
+          <p className="text-coffee-500 text-sm mt-1">Ops Platform</p>
         </div>
 
         {/* Tab toggle */}
-        <div
-          className="flex rounded-xl p-1 mb-5"
-          style={{ background: '#F2EAE0' }}
-        >
+        <div className="flex bg-coffee-100 rounded-xl p-1 mb-4">
           {['login', 'register'].map(m => (
             <button
               key={m}
               type="button"
               onClick={() => switchMode(m)}
-              className="flex-1 py-2 rounded-lg text-sm transition-colors duration-150"
-              style={{
-                background:   mode === m ? '#FFFFFF' : 'transparent',
-                color:        mode === m ? '#221508' : '#A8896A',
-                fontWeight:   mode === m ? 500 : 400,
-                border:       mode === m ? '1px solid #E0D0BC' : 'none',
-              }}
+              className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                mode === m ? 'bg-white text-coffee-900 shadow-sm' : 'text-coffee-500 hover:text-coffee-700'
+              }`}
             >
               {m === 'login' ? 'Sign In' : 'Create Account'}
             </button>
@@ -127,16 +102,13 @@ export default function Login() {
         </div>
 
         {/* Card */}
-        <div className="bg-white border border-coffee-200 rounded-2xl p-7">
-          <h2 className="text-base text-coffee-900 mb-5" style={{ fontWeight: 500 }}>
+        <div className="bg-white rounded-2xl shadow-sm border border-coffee-100 p-8">
+          <h2 className="text-lg font-bold text-coffee-900 mb-5">
             {mode === 'login' ? 'Welcome back' : 'Set up your account'}
           </h2>
 
           {error && (
-            <div
-              className="mb-4 px-3 py-2.5 rounded-lg text-sm"
-              style={{ background: '#FCEBEB', color: '#A32D2D' }}
-            >
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm mb-4">
               {error}
             </div>
           )}
@@ -184,8 +156,7 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full h-9 rounded-lg text-sm text-white transition-colors duration-150 disabled:opacity-40"
-              style={{ background: '#533A24', fontWeight: 500 }}
+              className="w-full py-2.5 rounded-xl text-sm text-white font-semibold bg-coffee-700 hover:bg-coffee-800 disabled:opacity-50 transition-colors mt-2"
             >
               {loading
                 ? (mode === 'login' ? 'Signing in…' : 'Creating account…')
@@ -194,12 +165,11 @@ export default function Login() {
             </button>
           </form>
 
-          <p className="text-center text-xs text-coffee-400 mt-5">
+          <p className="text-center text-xs text-coffee-500 mt-5">
             {mode === 'login' ? 'No account? ' : 'Already have one? '}
             <button
               onClick={() => switchMode(mode === 'login' ? 'register' : 'login')}
-              className="text-coffee-600 hover:text-coffee-800 transition-colors"
-              style={{ fontWeight: 500 }}
+              className="text-coffee-700 font-semibold hover:underline"
             >
               {mode === 'login' ? 'Create one' : 'Sign in'}
             </button>
@@ -208,14 +178,11 @@ export default function Login() {
 
         {/* Demo credentials hint */}
         {mode === 'login' && (
-          <div
-            className="mt-4 px-4 py-3 rounded-xl text-xs text-coffee-400 text-center"
-            style={{ background: '#FAF6F0', border: '1px solid #E0D0BC' }}
-          >
+          <div className="mt-4 bg-coffee-50 border border-coffee-200 rounded-xl px-4 py-3 text-xs text-coffee-500 text-center">
             Demo:{' '}
-            <span className="font-mono text-coffee-600">admin@oneestate.com</span>
+            <span className="font-mono font-semibold text-coffee-700">admin@oneestate.com</span>
             {' '}· Password:{' '}
-            <span className="font-mono text-coffee-600">Admin123!</span>
+            <span className="font-mono font-semibold text-coffee-700">Admin123!</span>
           </div>
         )}
       </div>
