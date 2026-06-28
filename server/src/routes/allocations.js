@@ -325,12 +325,12 @@ router.put('/:id', requireRole('admin', 'roaster'), async (req, res) => {
   setClauses.push(`updated_by = $${params.length}`, 'updated_at = NOW()');
   params.push(alloc.id);
 
-  // Pre-check: if a new code was requested, verify it's not taken — include soft-deleted rows
-  // because the unique index on (tenant_id, allocation_code) covers them too.
+  // Pre-check: if a new code was requested, verify it's not taken by another active allocation.
+  // Deleted allocations are excluded — their codes are freed up for reuse (migration 034).
   if (allocation_code && allocation_code !== alloc.allocation_code) {
     const { rows: clash } = await pool.query(
       `SELECT allocation_code FROM oec_allocations
-       WHERE tenant_id = $1 AND allocation_code = $2 AND id != $3`,
+       WHERE tenant_id = $1 AND allocation_code = $2 AND id != $3 AND deleted_at IS NULL`,
       [tenant_id, allocation_code, alloc.id]
     );
     if (clash.length > 0) {
