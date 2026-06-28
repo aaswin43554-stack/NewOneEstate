@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import Layout from '../../components/Layout';
 import { api } from '../../lib/api';
 import { Button, FormInput, FormSelect, PageHeader } from '../../components/ui';
@@ -13,6 +13,7 @@ export default function RoastNew() {
 
   const [mode,            setMode]       = useState('production');
   const [allocations,     setAllocs]     = useState([]);
+  const [allocsLoaded,    setAllocsLoaded] = useState(false);
   const [allocId,         setAllocId]    = useState(preselectedAlloc || '');
   const [process,         setProcess]    = useState('Washed');
   const [estate,          setEstate]     = useState('');
@@ -27,7 +28,8 @@ export default function RoastNew() {
     api.get('/allocations?state=roasting_in_progress')
       .then(r => r.json())
       .then(d => setAllocs(d.allocations || []))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setAllocsLoaded(true));
   }, []);
 
   const greenG = greenKg ? Math.round(parseFloat(greenKg) * 1000) : null;
@@ -99,19 +101,42 @@ export default function RoastNew() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {mode === 'production' ? (
-            <FormSelect
-              label="Allocation"
-              value={allocId}
-              onChange={e => setAllocId(e.target.value)}
-              required
-            >
-              <option value="">Select allocation…</option>
-              {allocations.map(a => (
-                <option key={a.id} value={a.id}>
-                  {a.allocation_code} · {a.process} · {a.harvest_year}
-                </option>
-              ))}
-            </FormSelect>
+            allocsLoaded && allocations.length === 0 ? (
+              <div
+                className="rounded-xl p-4 text-sm"
+                style={{ background: '#FFF8F0', border: '1px solid #E0D0BC', color: '#6F5035' }}
+              >
+                <p style={{ fontWeight: 500, marginBottom: 6 }}>No allocations ready to roast</p>
+                <p style={{ fontSize: 12, lineHeight: 1.6, color: '#8B6A47' }}>
+                  To start a production roast, an allocation must first be moved to{' '}
+                  <strong>Roasting in Progress</strong> state.
+                </p>
+                <p style={{ fontSize: 12, lineHeight: 1.6, color: '#8B6A47', marginTop: 4 }}>
+                  Steps: Upcoming → Open for Requests → Roasting in Progress
+                </p>
+                <Link
+                  to="/allocations"
+                  className="inline-block mt-3 text-xs"
+                  style={{ color: '#533A24', textDecoration: 'underline', fontWeight: 500 }}
+                >
+                  Go to Allocations →
+                </Link>
+              </div>
+            ) : (
+              <FormSelect
+                label="Allocation"
+                value={allocId}
+                onChange={e => setAllocId(e.target.value)}
+                required
+              >
+                <option value="">Select allocation…</option>
+                {allocations.map(a => (
+                  <option key={a.id} value={a.id}>
+                    {a.allocation_code} · {a.process} · {a.harvest_year}
+                  </option>
+                ))}
+              </FormSelect>
+            )
           ) : (
             <>
               <FormSelect

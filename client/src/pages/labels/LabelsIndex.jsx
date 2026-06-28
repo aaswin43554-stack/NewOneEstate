@@ -25,64 +25,40 @@ function MiniLabel({ a, onDelete, isAdmin }) {
     >
       {hasLabel ? (
         <>
-          {a.label_image ? (
-            /* Show the uploaded label artwork instead of the text data */
-            <div className="flex-1 flex items-center justify-center" style={{ background: '#FFFFFF' }}>
-              <img
-                src={a.label_image}
-                alt={`${a.allocation_code} label`}
-                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-              />
-            </div>
-          ) : (
-            <>
-              {/* Mini label header */}
-              <div
-                className="text-center py-1.5"
-                style={{ background: '#2A1A0C', color: '#FAF6F0' }}
-              >
-                <p style={{ fontSize: 9, letterSpacing: '0.15em', fontWeight: 600 }}>ONE ESTATE</p>
-                <p style={{ fontSize: 7, letterSpacing: '0.1em', color: '#C8A87A' }}>SINGLE-ESTATE SPECIALTY COFFEE</p>
-              </div>
+          {/* Mini label header */}
+          <div
+            className="text-center py-1.5"
+            style={{ background: '#2A1A0C', color: '#FAF6F0' }}
+          >
+            <p style={{ fontSize: 9, letterSpacing: '0.15em', fontWeight: 600 }}>ONE ESTATE</p>
+            <p style={{ fontSize: 7, letterSpacing: '0.1em', color: '#C8A87A' }}>SINGLE-ESTATE SPECIALTY COFFEE</p>
+          </div>
 
-              <div className="flex-1 p-3 flex flex-col gap-1.5">
-                <p className="text-coffee-900" style={{ fontSize: 13, fontWeight: 600 }}>
-                  {a.allocation_code}
-                </p>
-                {a.estate_location && (
-                  <p style={{ fontSize: 9, color: '#8B6A47' }}>{a.estate_location}</p>
-                )}
-                <p style={{ fontSize: 9, color: '#6F5035' }}>
-                  {PROCESS_LABEL[a.process] || a.process}
-                </p>
-                {a.harvest_year && (
-                  <p style={{ fontSize: 9, color: '#6F5035' }}>Harvest {a.harvest_year}</p>
-                )}
-                {a.variety && (
-                  <p style={{ fontSize: 9, color: '#6F5035' }}>Variety  {a.variety}</p>
-                )}
-                {a.roast_level && (
-                  <p style={{ fontSize: 9, color: '#6F5035' }}>Roast  {a.roast_level}</p>
-                )}
-                {a.flavour_notes && (
-                  <p style={{ fontSize: 9, color: '#6F5035', marginTop: 2 }}>
-                    Profile  {a.flavour_notes}
-                  </p>
-                )}
-
-                {/* QR thumbnail */}
-                {a.qr_code_base64 && (
-                  <div className="mt-auto pt-2 flex justify-end">
-                    <img
-                      src={`data:image/png;base64,${a.qr_code_base64}`}
-                      alt="QR"
-                      style={{ width: 32, height: 32 }}
-                    />
-                  </div>
-                )}
-              </div>
-            </>
-          )}
+          <div className="flex-1 p-3 flex flex-col gap-1.5">
+            <p className="text-coffee-900" style={{ fontSize: 13, fontWeight: 600 }}>
+              {a.allocation_code}
+            </p>
+            {a.estate_location && (
+              <p style={{ fontSize: 9, color: '#8B6A47' }}>{a.estate_location}</p>
+            )}
+            <p style={{ fontSize: 9, color: '#6F5035' }}>
+              {PROCESS_LABEL[a.process] || a.process}
+            </p>
+            {a.harvest_year && (
+              <p style={{ fontSize: 9, color: '#6F5035' }}>Harvest {a.harvest_year}</p>
+            )}
+            {a.variety && (
+              <p style={{ fontSize: 9, color: '#6F5035' }}>Variety  {a.variety}</p>
+            )}
+            {a.roast_level && (
+              <p style={{ fontSize: 9, color: '#6F5035' }}>Roast  {a.roast_level}</p>
+            )}
+            {a.flavour_notes && (
+              <p style={{ fontSize: 9, color: '#6F5035', marginTop: 2 }}>
+                Profile  {a.flavour_notes}
+              </p>
+            )}
+          </div>
 
           {/* Net weight footer + delete */}
           <div

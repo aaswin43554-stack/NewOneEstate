@@ -28,8 +28,9 @@ export default function AllocationNew() {
   const [openDate,  setOpenDate]  = useState(new Date().toISOString().split('T')[0]);
   const [closeDate, setCloseDate] = useState(addDays(new Date().toISOString().split('T')[0], 5));
   const [pricing,   setPricing]   = useState([{ market: 'Laos', amount: '', currency: 'THB' }]);
-  const [error,     setError]     = useState('');
-  const [saving,    setSaving]    = useState(false);
+  const [error,       setError]       = useState('');
+  const [saving,      setSaving]      = useState(false);
+  const [slowWarning, setSlowWarning] = useState(false);
 
   useEffect(() => {
     api.get('/lots').then(r => r.json()).then(d => {
@@ -90,7 +91,8 @@ export default function AllocationNew() {
       return acc;
     }, {});
 
-    setSaving(true);
+    setSaving(true); setSlowWarning(false);
+    const slowTimer = setTimeout(() => setSlowWarning(true), 8000);
     try {
       const res = await api.post('/allocations', {
         lots: lotsPayload,
@@ -102,7 +104,7 @@ export default function AllocationNew() {
       const { allocation } = await res.json();
       navigate(`/allocations/${allocation.id}`);
     } catch { setError('Network error.'); }
-    finally { setSaving(false); }
+    finally { clearTimeout(slowTimer); setSaving(false); setSlowWarning(false); }
   }
 
   return (
@@ -279,6 +281,12 @@ export default function AllocationNew() {
 
           {error && (
             <p className="text-xs" style={{ color: '#A32D2D' }}>{error}</p>
+          )}
+
+          {slowWarning && (
+            <p className="text-xs text-center" style={{ color: '#8B6A47' }}>
+              Server is starting up — this may take up to 30 seconds. Please wait and do not close this page.
+            </p>
           )}
 
           <Button type="submit" disabled={saving} className="w-full justify-center" size="lg">

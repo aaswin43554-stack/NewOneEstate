@@ -23,7 +23,7 @@ router.get('/', async (req, res) => {
       `SELECT a.id, a.allocation_code, a.process, a.state, a.harvest_year,
               l.id AS label_id, l.generated_at,
               l.estate_location, l.variety, l.roast_level, l.flavour_notes,
-              l.net_weight_g, l.label_image, l.qr_code_base64
+              l.net_weight_g
        FROM oec_allocations a
        LEFT JOIN oec_labels l ON l.allocation_id = a.id AND l.tenant_id = a.tenant_id
        WHERE a.tenant_id = $1 AND a.deleted_at IS NULL

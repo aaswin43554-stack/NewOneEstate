@@ -228,8 +228,10 @@ export default function AllocationDetail() {
   async function saveEdit(e) {
     e.preventDefault();
     setEditSaving(true); setEditError('');
+    const currentCode = data?.allocation?.allocation_code;
     const body = {
-      allocation_code:           editFields.allocation_code || undefined,
+      allocation_code: editFields.allocation_code && editFields.allocation_code !== currentCode
+        ? editFields.allocation_code : undefined,
       estate:                    editFields.estate || undefined,
       planned_green_quantity_g:  editFields.planned_green_quantity_g
         ? Math.round(parseFloat(editFields.planned_green_quantity_g) * 1000) : undefined,

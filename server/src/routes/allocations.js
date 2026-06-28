@@ -325,6 +325,20 @@ router.put('/:id', requireRole('admin', 'roaster'), async (req, res) => {
   setClauses.push(`updated_by = $${params.length}`, 'updated_at = NOW()');
   params.push(alloc.id);
 
+  // Pre-check: if a new code was requested, verify it's not taken by a different allocation.
+  if (allocation_code && allocation_code !== alloc.allocation_code) {
+    const { rows: clash } = await pool.query(
+      `SELECT allocation_code FROM oec_allocations
+       WHERE tenant_id = $1 AND allocation_code = $2 AND id != $3 AND deleted_at IS NULL`,
+      [tenant_id, allocation_code, alloc.id]
+    );
+    if (clash.length > 0) {
+      return res.status(400).json({
+        error: `Code "${allocation_code}" is already used by another allocation. Choose a different code.`,
+      });
+    }
+  }
+
   try {
     const { rows: [updated] } = await pool.query(
       `UPDATE oec_allocations SET ${setClauses.join(', ')} WHERE id = $${params.length} RETURNING *`,
