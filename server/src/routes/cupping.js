@@ -147,7 +147,7 @@ router.put('/:id', requireRole('admin', 'roaster'), async (req, res) => {
     );
     if (smp) {
       const { rows: [rs] } = await pool.query(
-        'SELECT ended_at FROM oec_roast_sessions WHERE id = $1', [smp.roast_session_id]
+        'SELECT ended_at FROM oec_roast_sessions WHERE id = $1 AND tenant_id = $2', [smp.roast_session_id, tenant_id]
       );
       if (rs?.ended_at) {
         const process  = await getProcessFromSession(smp.roast_session_id, tenant_id);
@@ -277,7 +277,7 @@ router.post('/:id/samples', requireRole('admin', 'roaster'), async (req, res) =>
 
   const process = await getProcessFromSession(roast_session_id, tenant_id);
   const { rows: [allocRow] } = rs.allocation_id
-    ? await pool.query('SELECT harvest_year FROM oec_allocations WHERE id = $1', [rs.allocation_id])
+    ? await pool.query('SELECT harvest_year FROM oec_allocations WHERE id = $1 AND tenant_id = $2', [rs.allocation_id, tenant_id])
     : { rows: [{}] };
   const harvest_year = allocRow?.harvest_year ?? null;
 
@@ -383,10 +383,10 @@ router.put('/:id/samples/:sample_id', requireRole('admin', 'roaster'), async (re
   } else {
     const process = await getProcessFromSession(sample.roast_session_id, tenant_id);
     const { rows: [rs] } = await pool.query(
-      'SELECT * FROM oec_roast_sessions WHERE id = $1', [sample.roast_session_id]
+      'SELECT * FROM oec_roast_sessions WHERE id = $1 AND tenant_id = $2', [sample.roast_session_id, tenant_id]
     );
     const { rows: [allocRow] } = rs?.allocation_id
-      ? await pool.query('SELECT harvest_year FROM oec_allocations WHERE id = $1', [rs.allocation_id])
+      ? await pool.query('SELECT harvest_year FROM oec_allocations WHERE id = $1 AND tenant_id = $2', [rs.allocation_id, tenant_id])
       : { rows: [{}] };
     journal_draft = generateJournalDraft(
       merged, { ...rs, harvest_year: allocRow?.harvest_year ?? null },

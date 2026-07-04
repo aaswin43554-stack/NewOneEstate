@@ -4,6 +4,14 @@ const bcrypt = require('bcryptjs');
 const pool = require('../config/db');
 
 async function seedOpsDetails() {
+  // This script unconditionally DELETEs a tenant's lots/allocations/contacts/
+  // roasts/cupping/journal data before reseeding demo content — never let it
+  // run against production by accident.
+  if (process.env.NODE_ENV === 'production' && !process.env.FORCE_SEED_OPS_DETAILS) {
+    console.error('[seed-ops] Refusing to run with NODE_ENV=production. Set FORCE_SEED_OPS_DETAILS=1 to override.');
+    process.exit(1);
+  }
+
   const client = await pool.connect();
   try {
     console.log('[seed-ops] Starting database seeding for One Estate Coffee Operations...');

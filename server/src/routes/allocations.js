@@ -67,6 +67,19 @@ router.post('/sync-from-admin', async (req, res) => {
   try {
     await client.query('BEGIN');
 
+    // Verify the lot actually belongs to this tenant (IDOR guard, same check
+    // as the manual POST / route) before letting the sync link them.
+    if (lot_id) {
+      const { rows: [lot] } = await client.query(
+        'SELECT id FROM oec_lots WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
+        [lot_id, tenant_id]
+      );
+      if (!lot) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'lot_id not found for this tenant.' });
+      }
+    }
+
     const { rows: [existing] } = await client.query(
       `SELECT id, state FROM oec_allocations
        WHERE tenant_id = $1 AND external_id = $2 AND deleted_at IS NULL`,
@@ -401,9 +414,13 @@ router.put('/:id/transition', requireRole('admin', 'roaster'), async (req, res) 
         if (existing.length > 0) continue;
 
         const { rows: [lot] } = await client.query(
-          'SELECT current_weight_g FROM oec_lots WHERE id = $1 FOR UPDATE',
-          [lot_id]
+          'SELECT current_weight_g FROM oec_lots WHERE id = $1 AND tenant_id = $2 FOR UPDATE',
+          [lot_id, tenant_id]
         );
+        if (!lot) {
+          await client.query('ROLLBACK');
+          return res.status(404).json({ error: 'Linked lot not found.' });
+        }
         const newWeight = lot.current_weight_g - green_quantity_g;
         if (newWeight < 0) {
           await client.query('ROLLBACK');
@@ -775,8 +792,8 @@ router.get('/:id', async (req, res) => {
       [alloc.id]
     ),
     pool.query(
-      'SELECT id, lot_code, estate, process, harvest_year, current_weight_g FROM oec_lots WHERE id = $1',
-      [alloc.lot_id]
+      'SELECT id, lot_code, estate, process, harvest_year, current_weight_g FROM oec_lots WHERE id = $1 AND tenant_id = $2',
+      [alloc.lot_id, tenant_id]
     ),
     pool.query(
       `SELECT al.lot_id, al.green_quantity_g,

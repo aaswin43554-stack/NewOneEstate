@@ -108,17 +108,27 @@ export default function JournalEntry() {
   async function handleBlur() {
     if (!doc?.id || status === 'published') return;
     setSaveStatus('saving');
-    await api.put(`/journal/${doc.id}`, { draft_content: content });
-    setSaveStatus('saved');
+    try {
+      await api.put(`/journal/${doc.id}`, { draft_content: content });
+      setSaveStatus('saved');
+    } catch {
+      setSaveStatus('');
+      return;
+    }
     setTimeout(() => setSaveStatus(''), 2500);
   }
 
   async function submitForReview() {
     setActioning(true); setActionError('');
-    const res = await api.post(`/journal/${doc.id}/submit`, {});
-    if (res.ok) load();
-    else { const d = await res.json(); setActionError(d.error || 'Failed.'); }
-    setActioning(false);
+    try {
+      const res = await api.post(`/journal/${doc.id}/submit`, {});
+      if (res.ok) load();
+      else { const d = await res.json().catch(() => ({})); setActionError(d.error || 'Failed.'); }
+    } catch {
+      setActionError('Network error — please try again.');
+    } finally {
+      setActioning(false);
+    }
   }
 
   async function confirmPublish() {

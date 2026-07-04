@@ -30,7 +30,7 @@ function requireAuth(req, res, next) {
   }
 
   try {
-    req.user = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     console.log(`[AUTH] OK — user ${req.user.id} (${req.user.email}) role=${req.user.role} -> ${req.method} ${req.path}`);
     next();
   } catch (err) {

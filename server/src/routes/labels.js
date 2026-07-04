@@ -75,7 +75,10 @@ router.post('/generate', requireRole('admin', 'roaster'), async (req, res) => {
   }
 
   const baseUrl = (process.env.APP_URL || 'https://newoneestate.onrender.com').replace(/\/$/, '');
-  const qr_url  = `${baseUrl}/public/journal/${alloc.allocation_code}`;
+  // Use the globally-unique allocation id, not allocation_code — allocation_code
+  // is only unique per tenant (see migrations 016/034), so two tenants can share
+  // a code and a code-keyed public URL would leak one tenant's data to another.
+  const qr_url  = `${baseUrl}/public/allocations/${alloc.id}`;
 
   let qr_code_base64;
   try {

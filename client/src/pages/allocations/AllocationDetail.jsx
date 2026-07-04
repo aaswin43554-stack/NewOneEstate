@@ -110,6 +110,7 @@ export default function AllocationDetail() {
     api.get(`/allocations/${id}`)
       .then(r => r.json())
       .then(setData)
+      .catch(() => setData(null))
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -136,26 +137,40 @@ export default function AllocationDetail() {
 
   async function generateJournalDrafts() {
     setJournalGenerating(true);
-    await api.post(`/journal/generate/${id}`, {});
-    setJournalGenerating(false);
-    loadJournal();
+    try {
+      await api.post(`/journal/generate/${id}`, {});
+      loadJournal();
+    } catch {
+      // Network error — leave existing journal state as-is; user can retry.
+    } finally {
+      setJournalGenerating(false);
+    }
   }
 
   async function openTransitionModal() {
-    const res = await api.get(`/allocations/${id}/transition-check`);
-    const d = await res.json();
-    setTransitionChecks(d);
-    setTransitionModal(true);
+    try {
+      const res = await api.get(`/allocations/${id}/transition-check`);
+      const d = await res.json().catch(() => ({}));
+      setTransitionChecks(d);
+      setTransitionModal(true);
+    } catch {
+      setTransError('Network error — please try again.');
+    }
   }
 
   async function confirmTransition() {
     setTransSaving(true);
     setTransError('');
-    const res = await api.put(`/allocations/${id}/transition`, { notes: transNotes || undefined });
-    const d = await res.json();
-    if (res.ok) { setTransitionModal(false); setTransNotes(''); load(); }
-    else { setTransError(d.error || 'Failed.'); }
-    setTransSaving(false);
+    try {
+      const res = await api.put(`/allocations/${id}/transition`, { notes: transNotes || undefined });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) { setTransitionModal(false); setTransNotes(''); load(); }
+      else { setTransError(d.error || 'Failed.'); }
+    } catch {
+      setTransError('Network error — please try again.');
+    } finally {
+      setTransSaving(false);
+    }
   }
 
   async function addRequest(e) {
@@ -164,49 +179,69 @@ export default function AllocationDetail() {
     const bags = parseInt(reqForm.quantity_bags, 10);
     if (!Number.isInteger(bags) || bags < 1) { setReqError('Enter a valid number of bags.'); return; }
     setReqSaving(true); setReqError('');
-    const res = await api.post(`/allocations/${id}/requests`, {
-      contact_id:    reqForm.contact_id,
-      quantity_bags: bags,
-      notes:         reqForm.notes || undefined,
-    });
-    const d = await res.json();
-    if (res.ok) {
-      setReqOpen(false);
-      setReqForm({ contact_id: '', quantity_bags: 1, notes: '' });
-      load();
-    } else { setReqError(d.error || 'Failed.'); }
-    setReqSaving(false);
+    try {
+      const res = await api.post(`/allocations/${id}/requests`, {
+        contact_id:    reqForm.contact_id,
+        quantity_bags: bags,
+        notes:         reqForm.notes || undefined,
+      });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setReqOpen(false);
+        setReqForm({ contact_id: '', quantity_bags: 1, notes: '' });
+        load();
+      } else { setReqError(d.error || 'Failed.'); }
+    } catch {
+      setReqError('Network error — please try again.');
+    } finally {
+      setReqSaving(false);
+    }
   }
 
   async function updateReqStatus(reqId, status) {
     setRowActioning(p => ({ ...p, [reqId]: true }));
     setRowErrors(p => ({ ...p, [reqId]: null }));
-    const res = await api.put(`/allocations/${id}/requests/${reqId}`, { status });
-    const d = await res.json();
-    if (res.ok) { load(); }
-    else { setRowErrors(p => ({ ...p, [reqId]: d.error })); }
-    setRowActioning(p => ({ ...p, [reqId]: false }));
+    try {
+      const res = await api.put(`/allocations/${id}/requests/${reqId}`, { status });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) { load(); }
+      else { setRowErrors(p => ({ ...p, [reqId]: d.error })); }
+    } catch {
+      setRowErrors(p => ({ ...p, [reqId]: 'Network error — please try again.' }));
+    } finally {
+      setRowActioning(p => ({ ...p, [reqId]: false }));
+    }
   }
 
   async function saveReqEdit(reqId) {
     setEditReqSaving(true);
     const bags = parseInt(editingReq.quantity_bags);
     if (!bags || bags < 1) { setRowErrors(p => ({ ...p, [reqId]: 'Enter at least 1 bag.' })); setEditReqSaving(false); return; }
-    const res = await api.put(`/allocations/${id}/requests/${reqId}`, { quantity_bags: bags });
-    const d = await res.json();
-    if (res.ok) { setEditingReq(null); load(); }
-    else { setRowErrors(p => ({ ...p, [reqId]: d.error })); }
-    setEditReqSaving(false);
+    try {
+      const res = await api.put(`/allocations/${id}/requests/${reqId}`, { quantity_bags: bags });
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) { setEditingReq(null); load(); }
+      else { setRowErrors(p => ({ ...p, [reqId]: d.error })); }
+    } catch {
+      setRowErrors(p => ({ ...p, [reqId]: 'Network error — please try again.' }));
+    } finally {
+      setEditReqSaving(false);
+    }
   }
 
   async function deleteReq(reqId) {
     if (!window.confirm('Delete this request?')) return;
     setRowActioning(p => ({ ...p, [reqId]: true }));
-    const res = await api.delete(`/allocations/${id}/requests/${reqId}`);
-    const d = await res.json().catch(() => ({}));
-    if (res.ok) { load(); }
-    else { setRowErrors(p => ({ ...p, [reqId]: d.error || 'Failed to delete.' })); }
-    setRowActioning(p => ({ ...p, [reqId]: false }));
+    try {
+      const res = await api.delete(`/allocations/${id}/requests/${reqId}`);
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) { load(); }
+      else { setRowErrors(p => ({ ...p, [reqId]: d.error || 'Failed to delete.' })); }
+    } catch {
+      setRowErrors(p => ({ ...p, [reqId]: 'Network error — please try again.' }));
+    } finally {
+      setRowActioning(p => ({ ...p, [reqId]: false }));
+    }
   }
 
   function openEdit() {
@@ -241,36 +276,58 @@ export default function AllocationDetail() {
       projected_bags_override:   editFields.projected_bags_override !== ''
         ? parseInt(editFields.projected_bags_override) : null,
     };
-    const res = await api.put(`/allocations/${id}`, body);
-    const d   = await res.json();
-    if (res.ok) { setEditOpen(false); load(); }
-    else { setEditError(d.error || 'Failed to update.'); }
-    setEditSaving(false);
+    try {
+      const res = await api.put(`/allocations/${id}`, body);
+      const d   = await res.json().catch(() => ({}));
+      if (res.ok) { setEditOpen(false); load(); }
+      else { setEditError(d.error || 'Failed to update.'); }
+    } catch {
+      setEditError('Network error — please try again.');
+    } finally {
+      setEditSaving(false);
+    }
   }
 
   async function confirmDelete() {
     setDeleting(true); setDeleteError('');
-    const res = await api.delete(`/allocations/${id}`);
-    const d   = await res.json();
-    if (res.ok) { navigate('/allocations'); }
-    else { setDeleteError(d.error || 'Failed to delete.'); setDeleting(false); }
+    try {
+      const res = await api.delete(`/allocations/${id}`);
+      const d   = await res.json().catch(() => ({}));
+      if (res.ok) { navigate('/allocations'); return; }
+      setDeleteError(d.error || 'Failed to delete.');
+      setDeleting(false);
+    } catch {
+      setDeleteError('Network error — please try again.');
+      setDeleting(false);
+    }
   }
 
   async function archiveAllocation() {
     setArchiving(true); setArchiveError('');
-    const res = await api.put(`/allocations/${id}/archive`, {});
-    const d   = await res.json();
-    if (res.ok) { load(); }
-    else { setArchiveError(d.error || 'Failed to archive.'); }
-    setArchiving(false);
+    try {
+      const res = await api.put(`/allocations/${id}/archive`, {});
+      const d   = await res.json().catch(() => ({}));
+      if (res.ok) { load(); }
+      else { setArchiveError(d.error || 'Failed to archive.'); }
+    } catch {
+      setArchiveError('Network error — please try again.');
+    } finally {
+      setArchiving(false);
+    }
   }
 
   async function unarchiveAllocation() {
     setArchiving(true); setArchiveError('');
-    const res = await api.put(`/allocations/${id}/unarchive`, {});
-    const d   = await res.json();
-    if (res.ok) { load(); }
-    else { setArchiveError(d.error || 'Failed to unarchive.'); setArchiving(false); }
+    try {
+      const res = await api.put(`/allocations/${id}/unarchive`, {});
+      const d   = await res.json().catch(() => ({}));
+      if (res.ok) { load(); }
+      else { setArchiveError(d.error || 'Failed to unarchive.'); }
+    } catch {
+      setArchiveError('Network error — please try again.');
+    } finally {
+      setArchiving(false);
+    }
   }
 
   if (loading) return <Layout><div className="px-6 py-6 text-sm text-coffee-400">Loading…</div></Layout>;

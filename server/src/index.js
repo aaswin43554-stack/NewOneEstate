@@ -137,7 +137,7 @@ app.use((req, res, next) => {
 // Health check — always responds, no DB required
 app.get('/api/health', (_req, res) => {
   console.log('[HEALTH] Health check requested');
-  return res.json({ status: 'ok', timestamp: new Date().toISOString(), db: !!process.env.DATABASE_URL });
+  return res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 app.use('/api/public',           publicRoutes);

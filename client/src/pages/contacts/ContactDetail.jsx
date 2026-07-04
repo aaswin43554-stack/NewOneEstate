@@ -60,6 +60,7 @@ export default function ContactDetail() {
         setContact(d.contact);
         setHistory(d.purchase_history || []);
       })
+      .catch(() => setContact(null))
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -69,10 +70,14 @@ export default function ContactDetail() {
     setReqSearch('');
     setSelectedReqId('');
     setLinkError('');
-    const res = await api.get('/allocation-requests');
-    const d = await res.json();
-    setAllRequests(d.requests || []);
-    setLinkModal(true);
+    try {
+      const res = await api.get('/allocation-requests');
+      const d = await res.json().catch(() => ({}));
+      setAllRequests(d.requests || []);
+      setLinkModal(true);
+    } catch {
+      setLinkError('Network error — please try again.');
+    }
   }
 
   async function submitLink(e) {
@@ -80,15 +85,20 @@ export default function ContactDetail() {
     if (!selectedReqId) { setLinkError('Select a request.'); return; }
     setLinkSaving(true);
     setLinkError('');
-    const res = await api.post(`/contacts/${id}/link-request`, { allocation_request_id: selectedReqId });
-    if (res.ok) {
-      setLinkModal(false);
-      load();
-    } else {
-      const d = await res.json();
-      setLinkError(d.error || 'Failed.');
+    try {
+      const res = await api.post(`/contacts/${id}/link-request`, { allocation_request_id: selectedReqId });
+      if (res.ok) {
+        setLinkModal(false);
+        load();
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setLinkError(d.error || 'Failed.');
+      }
+    } catch {
+      setLinkError('Network error — please try again.');
+    } finally {
+      setLinkSaving(false);
     }
-    setLinkSaving(false);
   }
 
   const filteredRequests = allRequests.filter(r => {

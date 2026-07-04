@@ -199,17 +199,23 @@ export default function LabelPreview() {
           if (d?.label) { setLabel(d.label); syncForm(d.label); }
         });
       })
+      .catch(() => setError('Failed to load label.'))
       .finally(() => setLoading(false));
   }
   useEffect(load, [allocation_id]);
 
   async function generate() {
     setGenerating(true); setError('');
-    const res = await api.post('/labels/generate', { allocation_id, ...formPayload() });
-    const d   = await res.json();
-    if (res.ok) { setLabel(d.label); syncForm(d.label); setNotFound(false); }
-    else        { setError(d.error || 'Failed to generate label.'); }
-    setGenerating(false);
+    try {
+      const res = await api.post('/labels/generate', { allocation_id, ...formPayload() });
+      const d   = await res.json().catch(() => ({}));
+      if (res.ok) { setLabel(d.label); syncForm(d.label); setNotFound(false); }
+      else        { setError(d.error || 'Failed to generate label.'); }
+    } catch {
+      setError('Network error — please try again.');
+    } finally {
+      setGenerating(false);
+    }
   }
 
   function formPayload() {
@@ -226,11 +232,16 @@ export default function LabelPreview() {
   async function save() {
     if (!label) return;
     setSaving(true); setError(''); setSaved(false);
-    const res = await api.put(`/labels/${label.id}`, formPayload());
-    const d   = await res.json();
-    if (res.ok) { setLabel(d.label); setSaved(true); setTimeout(() => setSaved(false), 2500); }
-    else        { setError(d.error || 'Failed to save.'); }
-    setSaving(false);
+    try {
+      const res = await api.put(`/labels/${label.id}`, formPayload());
+      const d   = await res.json().catch(() => ({}));
+      if (res.ok) { setLabel(d.label); setSaved(true); setTimeout(() => setSaved(false), 2500); }
+      else        { setError(d.error || 'Failed to save.'); }
+    } catch {
+      setError('Network error — please try again.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function confirmDelete() {

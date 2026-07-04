@@ -73,8 +73,8 @@ router.get('/:id', async (req, res) => {
     let parent_profile = null;
     if (profile.parent_profile_id) {
       const { rows: [parent] } = await pool.query(
-        'SELECT id, estate, process, harvest_year, status FROM oec_roast_profiles WHERE id = $1',
-        [profile.parent_profile_id]
+        'SELECT id, estate, process, harvest_year, status FROM oec_roast_profiles WHERE id = $1 AND tenant_id = $2',
+        [profile.parent_profile_id, tenant_id]
       );
       parent_profile = parent || null;
     }

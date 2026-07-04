@@ -158,8 +158,8 @@ router.put('/:id/complete', requireRole('admin', 'roaster'), async (req, res) =>
 
   if (!session.is_development && session.allocation_id) {
     const { rows: [alloc] } = await pool.query(
-      'SELECT process FROM oec_allocations WHERE id = $1',
-      [session.allocation_id]
+      'SELECT process FROM oec_allocations WHERE id = $1 AND tenant_id = $2',
+      [session.allocation_id, tenant_id]
     );
     if (alloc) sessionProcess = alloc.process;
   } else {

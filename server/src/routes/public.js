@@ -58,10 +58,14 @@ router.get('/allocations/:id', async (req, res) => {
   }
 });
 
-// GET /api/public/journal/:code  — scanned by QR code on bags; accepts allocation_code
+// GET /api/public/journal/:code  — legacy lookup by allocation_code, kept for
+// any labels already printed before QR codes switched to the id-based route.
+// allocation_code is only unique PER TENANT (migrations 016/034), so the same
+// code can legitimately exist for two different tenants — if it does, we must
+// refuse to guess rather than return one tenant's data for the other's code.
 router.get('/journal/:code', async (req, res) => {
   try {
-    const { rows: [alloc] } = await pool.query(
+    const { rows: matches } = await pool.query(
       `SELECT a.id, a.allocation_code, a.process, a.harvest_year,
               COALESCE(l.estate, a.estate) AS estate,
               l.lot_code
@@ -70,7 +74,12 @@ router.get('/journal/:code', async (req, res) => {
        WHERE a.allocation_code = $1 AND a.deleted_at IS NULL`,
       [req.params.code]
     );
-    if (!alloc) return res.status(404).json({ error: 'Not found.' });
+    if (matches.length === 0) return res.status(404).json({ error: 'Not found.' });
+    if (matches.length > 1) {
+      // Ambiguous across tenants — cannot safely pick one.
+      return res.status(404).json({ error: 'Not found.' });
+    }
+    const alloc = matches[0];
 
     const { rows: [label] } = await pool.query(
       `SELECT roast_date_start, roast_date_end, ready_to_brew_date, best_consumed_by_date

@@ -138,6 +138,7 @@ export default function ContactList() {
   const [statusFilter, setStatusFilter] = useState('All');
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [deleting,      setDeleting]      = useState(false);
+  const [deleteError,   setDeleteError]   = useState('');
   const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
@@ -153,10 +154,21 @@ export default function ContactList() {
 
   async function deleteContact(id) {
     setDeleting(true);
-    await api.delete(`/contacts/${id}`);
-    setDeleteConfirm(null);
-    setDeleting(false);
-    load();
+    setDeleteError('');
+    try {
+      const res = await api.delete(`/contacts/${id}`);
+      const d = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setDeleteConfirm(null);
+        load();
+      } else {
+        setDeleteError(d.error || 'Failed to delete contact.');
+      }
+    } catch {
+      setDeleteError('Network error — please try again.');
+    } finally {
+      setDeleting(false);
+    }
   }
 
   const filtered = useMemo(() => contacts.filter(c => {
@@ -230,12 +242,13 @@ export default function ContactList() {
               <p className="text-sm text-coffee-600 mb-5">
                 This will permanently remove the contact. This action cannot be undone.
               </p>
+              {deleteError && <p className="text-sm mb-3" style={{ color: '#A32D2D' }}>{deleteError}</p>}
               <div className="flex gap-3">
                 <Button onClick={() => deleteContact(deleteConfirm)} disabled={deleting}
                   className="flex-1 justify-center" variant="destructive">
                   {deleting ? 'Deleting…' : 'Delete'}
                 </Button>
-                <Button variant="secondary" onClick={() => setDeleteConfirm(null)}>Cancel</Button>
+                <Button variant="secondary" onClick={() => { setDeleteConfirm(null); setDeleteError(''); }}>Cancel</Button>
               </div>
             </div>
           </div>

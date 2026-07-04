@@ -94,7 +94,7 @@ function setupRoastWebSocket(server) {
     }
     let wsUser;
     try {
-      wsUser = jwt.verify(rawToken, process.env.JWT_SECRET);
+      wsUser = jwt.verify(rawToken, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     } catch {
       ws.send(JSON.stringify({ error: 'Invalid or expired token' }));
       ws.close();
