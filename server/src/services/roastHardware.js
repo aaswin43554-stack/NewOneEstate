@@ -39,6 +39,7 @@ function initSerial() {
 function runMock(ws, chargeTemp) {
   let elapsed     = 0;
   let currentTemp = chargeTemp;
+  const ambient   = 23; // roughly constant room temp, °C
 
   const iv = setInterval(() => {
     elapsed += 2;
@@ -64,8 +65,18 @@ function runMock(ws, chargeTemp) {
       return;
     }
 
+    // ET (environment/drum) reads hotter than BT and the gap narrows as the roast
+    // progresses — mirrors real TC4 behavior so the mock exercises a live BT/ET chart.
+    const etGap = 60 - Math.min(45, (elapsed / 600) * 45);
+    const et    = currentTemp + etGap;
+
     if (ws.readyState === WebSocket.OPEN)
-      ws.send(JSON.stringify({ t: elapsed, temp: Math.round(currentTemp) }));
+      ws.send(JSON.stringify({
+        t: elapsed,
+        temp: Math.round(currentTemp),
+        et: Math.round(et),
+        ambient
+      }));
   }, TICK_MS);
 
   const stop = () => clearInterval(iv);
@@ -133,10 +144,16 @@ function setupRoastWebSocket(server) {
       // Hardware path — subscribe to shared serial EventEmitter
       let elapsed = 0;
 
-      const onTemp = (temp) => {
+      const onReading = (reading) => {
         elapsed += TICK_MS / 1000;
-        if (ws.readyState === WebSocket.OPEN)
-          ws.send(JSON.stringify({ t: elapsed, temp, source: 'hardware' }));
+        if (ws.readyState === WebSocket.OPEN) {
+          const payload = { t: elapsed, temp: reading.bt, source: 'hardware' };
+          if (reading.et !== undefined) payload.et = reading.et;
+          if (reading.ambient !== undefined) payload.ambient = reading.ambient;
+          if (reading.heaterDuty !== undefined) payload.heaterDuty = reading.heaterDuty;
+          if (reading.exhaustDuty !== undefined) payload.exhaustDuty = reading.exhaustDuty;
+          ws.send(JSON.stringify(payload));
+        }
       };
 
       const onDisconnect = () => {
@@ -145,12 +162,12 @@ function setupRoastWebSocket(server) {
         ws.close();
       };
 
-      serial.on('temp', onTemp);
+      serial.on('reading', onReading);
       serial.once('disconnect', onDisconnect);
 
       const cleanup = () => {
         if (serial) {
-          serial.off('temp', onTemp);
+          serial.off('reading', onReading);
           serial.off('disconnect', onDisconnect);
         }
       };

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ReferenceLine, ResponsiveContainer,
+  ReferenceLine, ResponsiveContainer, Legend,
 } from 'recharts';
 import Layout from '../../components/Layout';
 import { api } from '../../lib/api';
@@ -68,8 +68,12 @@ const CustomTooltip = ({ active, payload, label }) => {
       className="px-3 py-2 rounded-lg border text-xs"
       style={{ background: '#FDFAF6', borderColor: '#E0D0BC', color: '#533A24' }}
     >
-      <p>{fmtMSS(label)}</p>
-      <p style={{ fontWeight: 500 }}>{payload[0]?.value?.toFixed(1)}°C</p>
+      <p className="mb-1">{fmtMSS(label)}</p>
+      {payload.map((p) => (
+        <p key={p.dataKey} style={{ fontWeight: 500, color: p.color }}>
+          {p.name} {p.value?.toFixed(1)}°C
+        </p>
+      ))}
     </div>
   );
 };
@@ -138,7 +142,7 @@ export default function RoastLive() {
     ws.onmessage = (e) => {
       const data = JSON.parse(e.data);
       if (data.t !== undefined) {
-        setPoints(prev => [...prev, { t: data.t, temp: data.temp }]);
+        setPoints(prev => [...prev, { t: data.t, temp: data.temp, et: data.et }]);
         setCurrentTemp(data.temp);
       } else if (data.event === 'eject_suggested') {
         setCompleteOpen(true);
@@ -379,6 +383,13 @@ export default function RoastLive() {
                 width={36}
               />
               <Tooltip content={<CustomTooltip />} />
+              <Legend
+                verticalAlign="top"
+                align="right"
+                height={24}
+                iconType="plainline"
+                wrapperStyle={{ fontSize: 11, color: '#A8896A' }}
+              />
               <Line
                 type="monotone"
                 dataKey="temp"
@@ -386,6 +397,16 @@ export default function RoastLive() {
                 dot={false}
                 strokeWidth={2}
                 name="BT"
+                isAnimationActive={false}
+              />
+              <Line
+                type="monotone"
+                dataKey="et"
+                stroke="#5B7F9E"
+                dot={false}
+                strokeWidth={2}
+                name="ET"
+                connectNulls
                 isAnimationActive={false}
               />
               {profile && (

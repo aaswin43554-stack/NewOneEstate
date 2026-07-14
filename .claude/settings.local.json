@@ -67,7 +67,9 @@
       "WebFetch(domain:www.oneestate.coffee)",
       "Bash(grep -rniE \"sk-[a-zA-Z0-9]{10,}|api[_-]?key\\\\s*[:=]\\\\s*['\\\\\"][a-zA-Z0-9]{10,}|secret\\\\s*[:=]\\\\s*['\\\\\"][a-zA-Z0-9]{8,}\" server/src client/src)",
       "Bash(xargs -0 git rm --cached)",
-      "Bash(echo \"---exit $?---\")"
+      "Bash(echo \"---exit $?---\")",
+      "Bash(npm -v)",
+      "PowerShell(Get-Command *)"
     ]
   }
 }
