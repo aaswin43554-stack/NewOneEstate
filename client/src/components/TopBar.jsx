@@ -86,6 +86,22 @@ export default function TopBar({ onMenuOpen }) {
   const [searching,   setSearching]   = useState(false);
   const [showResults, setShowResults] = useState(false);
   const searchRef = useRef(null);
+  const searchInputRef = useRef(null);
+
+  // Ctrl/Cmd+K focuses search from anywhere in the app — standard ops-tool shortcut.
+  useEffect(() => {
+    function handleKeydown(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      } else if (e.key === 'Escape' && document.activeElement === searchInputRef.current) {
+        searchInputRef.current.blur();
+        setShowResults(false);
+      }
+    }
+    document.addEventListener('keydown', handleKeydown);
+    return () => document.removeEventListener('keydown', handleKeydown);
+  }, []);
 
   useEffect(() => {
     if (query.trim().length < 2) { setResults([]); setShowResults(false); return; }
@@ -193,6 +209,7 @@ export default function TopBar({ onMenuOpen }) {
           >
             <Search size={13} className="text-coffee-300 flex-shrink-0" />
             <input
+              ref={searchInputRef}
               type="text"
               value={query}
               onChange={e => setQuery(e.target.value)}
@@ -201,13 +218,20 @@ export default function TopBar({ onMenuOpen }) {
               className="bg-transparent text-sm text-coffee-700 placeholder-coffee-300 w-full outline-none"
               style={{ fontWeight: 400 }}
             />
-            {query && (
+            {query ? (
               <button
                 onClick={() => { setQuery(''); setShowResults(false); }}
                 className="text-coffee-300 hover:text-coffee-500 flex-shrink-0"
               >
                 <X size={11} />
               </button>
+            ) : (
+              <kbd
+                className="hidden md:inline-flex text-coffee-300 flex-shrink-0"
+                style={{ fontSize: 10, fontFamily: 'inherit' }}
+              >
+                ⌘K
+              </kbd>
             )}
           </label>
 

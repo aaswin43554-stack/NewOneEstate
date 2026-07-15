@@ -499,6 +499,20 @@ export default function RoastDetail() {
         </div>
         {titleError && <p className="text-xs" style={{ color: '#A32D2D' }}>{titleError}</p>}
 
+        {/* In-progress: link back to live tracking — otherwise there's no way to
+            resume a roast once you've navigated away from the initial redirect */}
+        {session.status === 'in_progress' && (
+          <div
+            className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-sm"
+            style={{ background: '#FAEEDA', color: '#BA7517' }}
+          >
+            <span>This roast is still in progress.</span>
+            <Button variant="primary" size="sm" onClick={() => navigate(`/roast/${session.id}/live`)}>
+              Resume Live Tracking
+            </Button>
+          </div>
+        )}
+
         {/* Variance warning */}
         {session.variance_flagged && (
           <div className="px-4 py-3 rounded-xl text-sm" style={{ background: '#FAEEDA', color: '#BA7517' }}>

@@ -44,10 +44,10 @@ export function Button({ variant = 'primary', size = 'md', children, className =
 // ─── StatusBadge ───────────────────────────────────────────────────────────────
 const STATUS_META = {
   draft:        { cls: 'badge-draft',        dot: '#A3A3A3', label: 'Draft' },
-  under_review: { cls: 'badge-under-review', dot: '#404040', label: 'Under Review' },
-  published:    { cls: 'badge-published',    dot: '#FFFFFF', label: 'Published' },
-  active:       { cls: 'badge-published',    dot: '#FFFFFF', label: 'Active' },
-  missing:      { cls: 'badge-missing',      dot: '#0A0A0A', label: 'Missing' },
+  under_review: { cls: 'badge-under-review', dot: '#B45309', label: 'Under Review' },
+  published:    { cls: 'badge-published',    dot: '#16A34A', label: 'Published' },
+  active:       { cls: 'badge-published',    dot: '#16A34A', label: 'Active' },
+  missing:      { cls: 'badge-missing',      dot: '#DC2626', label: 'Missing' },
   archived:     { cls: 'badge-draft',        dot: '#A3A3A3', label: 'Archived' },
 };
 

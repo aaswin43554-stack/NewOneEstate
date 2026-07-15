@@ -64,6 +64,7 @@ export default function JournalEntry() {
   const [editSaving,         setEditSaving]         = useState(false);
   const [editError,          setEditError]          = useState('');
   const [deleteModal,        setDeleteModal]        = useState(false);
+  const [deleteError,        setDeleteError]        = useState('');
   const [deleting,           setDeleting]           = useState(false);
   const [historyOpen,        setHistoryOpen]        = useState(false);
   const [viewVersion,        setViewVersion]        = useState(null);
@@ -189,10 +190,21 @@ export default function JournalEntry() {
 
   async function deleteDraft() {
     setDeleting(true);
-    await api.delete(`/journal/${doc.id}`);
-    setDeleting(false);
-    setDeleteModal(false);
-    navigate('/journal');
+    setDeleteError('');
+    try {
+      const res = await api.delete(`/journal/${doc.id}`);
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setDeleteError(d.error || 'Failed to delete draft.');
+        return;
+      }
+      setDeleteModal(false);
+      navigate('/journal');
+    } catch {
+      setDeleteError('Network error — draft was not deleted.');
+    } finally {
+      setDeleting(false);
+    }
   }
 
   if (loading) return <Layout><div className="px-6 py-6 text-sm text-coffee-400">Loading…</div></Layout>;
@@ -540,6 +552,9 @@ export default function JournalEntry() {
           <p className="text-sm text-coffee-500 mb-5">
             This will permanently delete the draft. Are you sure?
           </p>
+          {deleteError && (
+            <p className="text-xs mb-3" style={{ color: '#A32D2D' }}>{deleteError}</p>
+          )}
           <div className="flex gap-3">
             <Button
               variant="destructive"

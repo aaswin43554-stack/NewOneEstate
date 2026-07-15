@@ -69,7 +69,11 @@
       "Bash(xargs -0 git rm --cached)",
       "Bash(echo \"---exit $?---\")",
       "Bash(npm -v)",
-      "PowerShell(Get-Command *)"
+      "PowerShell(Get-Command *)",
+      "Bash(xargs grep -n \"deleted_at\\\\|CREATE TABLE\")",
+      "PowerShell(Get-Content *)",
+      "Bash(npm --version)",
+      "PowerShell(Get-ChildItem *)"
     ]
   }
 }

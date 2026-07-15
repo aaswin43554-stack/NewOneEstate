@@ -61,7 +61,10 @@ export default function Sidebar({ open, onClose }) {
   const navigate = useNavigate();
 
   async function handleLogout() {
-    try { await api.post('/auth/logout', {}); } catch (_) { /* swallow */ }
+    const refresh_token = localStorage.getItem('refresh_token');
+    try {
+      if (refresh_token) await api.post('/auth/logout', { refresh_token });
+    } catch (_) { /* swallow */ }
     logout();
     navigate('/login');
   }

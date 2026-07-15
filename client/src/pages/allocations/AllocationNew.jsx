@@ -7,10 +7,18 @@ import { Button, FormInput, PageHeader } from '../../components/ui';
 const CURRENCIES = ['LAK', 'THB', 'USD'];
 const MARKETS    = ['Laos', 'Thailand', 'Other: International'];
 
+// "Today" in the roastery's local timezone, not the browser's/UTC's — using
+// new Date().toISOString() here pre-fills yesterday's date during Laos
+// morning hours (UTC+7) whenever the browser's UTC day hasn't rolled over yet.
+function todayInputDate() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Vientiane' });
+}
+
 function addDays(dateStr, days) {
-  const d = new Date(dateStr);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().split('T')[0];
+  // Pure calendar-date math (no Date-object mutation) so this isn't sensitive
+  // to the browser's local timezone offset.
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().split('T')[0];
 }
 
 function projectedBags(greenG, bagG) {
@@ -25,8 +33,8 @@ export default function AllocationNew() {
   // One allocation can draw green from several lots — "half from each".
   const [rows,      setRows]      = useState([{ lot_id: '', green_kg: '' }]);
   const [bagG,      setBagG]      = useState('200');
-  const [openDate,  setOpenDate]  = useState(new Date().toISOString().split('T')[0]);
-  const [closeDate, setCloseDate] = useState(addDays(new Date().toISOString().split('T')[0], 5));
+  const [openDate,  setOpenDate]  = useState(todayInputDate());
+  const [closeDate, setCloseDate] = useState(addDays(todayInputDate(), 5));
   const [pricing,   setPricing]   = useState([{ market: 'Laos', amount: '', currency: 'THB' }]);
   const [error,       setError]       = useState('');
   const [saving,      setSaving]      = useState(false);

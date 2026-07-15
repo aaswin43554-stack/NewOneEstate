@@ -134,11 +134,17 @@ async function checkTransitionPreconditions(allocation, to_state, tenant_id) {
     const lotIds = allocLots.map(l => l.lot_id);
     let reservedCount = 0;
     if (lotIds.length > 0) {
+      // Match on the same reason string the auto-reserve step writes
+      // (`Auto-reserved for allocation ${allocation_code}`) so this only
+      // counts reservations made FOR THIS allocation — not any reservation
+      // the lot has ever had (e.g. from a prior allocation, or one created
+      // out-of-band via sync-from-admin), which would false-pass this check.
+      const reason = `Auto-reserved for allocation ${allocation.allocation_code}`;
       const { rows: [agg] } = await pool.query(
         `SELECT COUNT(DISTINCT lot_id)::int AS n FROM oec_lot_movements
          WHERE lot_id = ANY($1::uuid[]) AND movement_type = 'reservation'
-           AND authorised_by IS NOT NULL`,
-        [lotIds]
+           AND authorised_by IS NOT NULL AND reason = $2`,
+        [lotIds, reason]
       );
       reservedCount = agg.n;
     }

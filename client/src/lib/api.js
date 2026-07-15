@@ -61,9 +61,10 @@ export async function apiFetch(path, options = {}) {
     }
 
     if (refreshRes.ok) {
-      const { access_token } = await refreshRes.json();
+      const { access_token, refresh_token } = await refreshRes.json();
       log(`[API] Token refreshed OK — retrying ${method} ${path}`);
       localStorage.setItem('access_token', access_token);
+      if (refresh_token) localStorage.setItem('refresh_token', refresh_token);
       headers.Authorization = `Bearer ${access_token}`;
       try {
         res = await fetch(`${BASE}${path}`, { ...options, headers });

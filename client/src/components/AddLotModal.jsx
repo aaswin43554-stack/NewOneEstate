@@ -4,10 +4,18 @@ import { Button, FormInput, FormSelect } from './ui';
 import { X } from 'lucide-react';
 
 const PROCESSES = ['Washed', 'Honey', 'Natural', 'Anaerobic'];
+
+// "Today" in the roastery's local timezone, not the browser's/UTC's — using
+// new Date().toISOString() here pre-fills yesterday's date during Laos
+// morning hours (UTC+7).
+function todayInputDate() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Vientiane' });
+}
+
 const INIT = {
   lot_code: '', estate: '', process: 'Washed',
   harvest_year: String(new Date().getFullYear()),
-  arrival_date: new Date().toISOString().split('T')[0],
+  arrival_date: todayInputDate(),
   arrival_weight_kg: '', storage_location: '',
   moisture_content: '', water_activity: '', supplier_notes: '',
 };

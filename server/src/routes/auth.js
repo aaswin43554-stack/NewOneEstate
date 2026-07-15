@@ -178,7 +178,12 @@ router.post(
     console.log(`[LOGIN] Attempt — email: ${email} | DB URL set: ${!!process.env.DATABASE_URL} | JWT_SECRET set: ${!!process.env.JWT_SECRET}`);
 
     try {
-      console.log(`[LOGIN] Querying user record for: ${email}`);
+      console.log(`[LOGIN] Querying user record(s) for: ${email}`);
+      // `oec_users` is UNIQUE on (tenant_id, email), not on email alone — the
+      // same address can legitimately have an account in more than one tenant.
+      // We fetch every matching row and compare the password against each one,
+      // so the user lands in whichever tenant their password actually belongs
+      // to, instead of an arbitrary row[0].
       const { rows } = await pool.query(
         `SELECT id, tenant_id, name, email, password_hash, role, timezone
          FROM oec_users WHERE email = $1`,
@@ -194,16 +199,24 @@ router.post(
         return res.status(401).json({ error: 'Invalid credentials', code: 'LOGIN_002' });
       }
 
-      const user = rows[0];
-      console.log(`[LOGIN] User found — id: ${user.id} | role: ${user.role} | tenant: ${user.tenant_id} — comparing password`);
+      console.log(`[LOGIN] ${rows.length} account(s) found for ${email} — comparing password against each`);
+      let user = null;
+      for (const candidate of rows) {
+        if (await bcrypt.compare(password, candidate.password_hash)) {
+          user = candidate;
+          break;
+        }
+      }
 
-      const valid = await bcrypt.compare(password, user.password_hash);
-      if (!valid) {
-        // LOGIN_003 (internal log only): password mismatch. The client-facing
-        // code is kept identical to LOGIN_002 above to prevent enumeration.
-        console.warn(`[LOGIN][LOGIN_003] Password mismatch for user ${user.id} (${email})`);
+      if (!user) {
+        // LOGIN_003 (internal log only): password mismatch on every candidate
+        // account. The client-facing code is kept identical to LOGIN_002 above
+        // to prevent enumeration.
+        console.warn(`[LOGIN][LOGIN_003] Password mismatch for all ${rows.length} account(s) with email ${email}`);
         return res.status(401).json({ error: 'Invalid credentials', code: 'LOGIN_002' });
       }
+
+      console.log(`[LOGIN] Matched user — id: ${user.id} | role: ${user.role} | tenant: ${user.tenant_id}`);
 
       console.log(`[LOGIN] Password OK for user ${user.id} — generating tokens`);
       const refreshRaw = makeRefreshToken();
@@ -280,8 +293,20 @@ router.post(
         return res.status(401).json({ error: 'Refresh token expired', code: 'REFRESH_004' });
       }
 
-      console.log(`[REFRESH] SUCCESS — issuing new access token for user ${row.id} (${row.email})`);
-      return res.json({ access_token: makeAccessToken(row) });
+      // Rotate the refresh token on every use: revoke the one just presented
+      // and issue a new one. Bounds how long a leaked refresh token stays
+      // useful — instead of remaining valid indefinitely up to its 7-day TTL,
+      // a leaked token is invalidated the next time the legitimate client
+      // refreshes with it.
+      await pool.query(
+        'UPDATE oec_refresh_tokens SET revoked_at = NOW() WHERE token_hash = $1',
+        [tokenHash]
+      );
+      const newRefreshRaw = makeRefreshToken();
+      await storeRefreshToken(row.id, newRefreshRaw);
+
+      console.log(`[REFRESH] SUCCESS — issuing new access + refresh token for user ${row.id} (${row.email})`);
+      return res.json({ access_token: makeAccessToken(row), refresh_token: newRefreshRaw });
     } catch (err) {
       // REFRESH_005: Unexpected DB error during token lookup
       console.error(`[REFRESH][REFRESH_005] Token refresh DB error | pg code: ${err.code || 'N/A'} | ${err.message}`);

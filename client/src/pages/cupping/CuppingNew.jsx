@@ -29,6 +29,13 @@ const PURPOSES = [
   { value: 'comparative',  label: 'Comparative' },
 ];
 
+// "Today" in the roastery's local timezone, not the browser's/UTC's — using
+// new Date().toISOString() here pre-fills yesterday's date during Laos
+// morning hours (UTC+7), which also threw off the days-off-roast calculation.
+function todayInputDate() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Vientiane' });
+}
+
 const REST_DAYS = { Washed: 4, Honey: 5, Natural: 7, Anaerobic: 7 };
 
 function getProcess(session) {
@@ -238,7 +245,7 @@ export default function CuppingNew() {
   const [daysOff,        setDaysOff]        = useState(null);
   const [processWarn,    setProcessWarn]    = useState(null);
   const [purpose,        setPurpose]        = useState('');
-  const [cupDate,        setCupDate]        = useState(new Date().toISOString().split('T')[0]);
+  const [cupDate,        setCupDate]        = useState(todayInputDate());
   const [nCups,          setNCups]          = useState(3);
   const [sessionNotes,   setSessionNotes]   = useState('');
 

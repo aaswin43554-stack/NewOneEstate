@@ -40,12 +40,9 @@ function normalizeChannel(raw) {
 //            window_open_date, window_close_date, state, lot_id, tenant_id }
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/sync-from-admin', async (req, res) => {
-  const secret = process.env.ONE_ESTATE_WEBHOOK_SECRET;
-  const auth   = req.headers['authorization'] || '';
-  const token  = auth.startsWith('Bearer ') ? auth.slice(7) : null;
-  if (!secret || !token || !secretMatches(token, secret)) {
-    return res.status(401).json({ error: 'Unauthorized.' });
-  }
+  const globalSecret = process.env.ONE_ESTATE_WEBHOOK_SECRET;
+  const auth  = req.headers['authorization'] || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
 
   const {
     external_id, allocation_code, estate, process: lotProcess, harvest_year,
@@ -56,6 +53,28 @@ router.post('/sync-from-admin', async (req, res) => {
   if (!external_id || !allocation_code || !estate || !lotProcess || !harvest_year
       || !planned_green_quantity_g || !planned_bag_size_g || !state || !tenant_id) {
     return res.status(400).json({ error: 'Missing required sync fields.' });
+  }
+
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized.' });
+  }
+
+  // Prefer a per-tenant secret when the tenant has one configured — this
+  // proves the caller is authorized for THIS tenant specifically, closing the
+  // hole where the single global secret lets anyone write allocations into
+  // any tenant just by naming a different tenant_id in the payload. Tenants
+  // without a configured secret fall back to the shared global one, matching
+  // today's behavior, so existing integrations keep working unchanged.
+  const { rows: [tenantRow] } = await pool.query(
+    'SELECT webhook_secret FROM oec_tenants WHERE id = $1',
+    [tenant_id]
+  );
+  if (!tenantRow) {
+    return res.status(401).json({ error: 'Unauthorized.' });
+  }
+  const expectedSecret = tenantRow.webhook_secret || globalSecret;
+  if (!expectedSecret || !secretMatches(token, expectedSecret)) {
+    return res.status(401).json({ error: 'Unauthorized.' });
   }
 
   const VALID_STATES = ['upcoming', 'open_for_requests', 'roasting_in_progress', 'allocation_closed'];
@@ -341,6 +360,15 @@ router.put('/:id', requireRole('admin', 'roaster'), async (req, res) => {
   // Pre-check: if a new code was requested, verify it's not taken by another active allocation.
   // Deleted allocations are excluded — their codes are freed up for reuse (migration 034).
   if (allocation_code && allocation_code !== alloc.allocation_code) {
+    // batchCodeService derives the batch code's allocation segment by taking
+    // the text after the last "-" and parsing it as an integer (e.g. "W-02"
+    // -> "02"). A code that doesn't end in "-<digits>" would silently
+    // produce a "NaN" batch code for every future roast session under it.
+    if (!/-\d+$/.test(allocation_code)) {
+      return res.status(400).json({
+        error: 'Allocation code must end with a hyphen followed by digits (e.g. "W-02").',
+      });
+    }
     const { rows: clash } = await pool.query(
       `SELECT allocation_code FROM oec_allocations
        WHERE tenant_id = $1 AND allocation_code = $2 AND id != $3 AND deleted_at IS NULL`,
@@ -406,13 +434,13 @@ router.put('/:id/transition', requireRole('admin', 'roaster'), async (req, res) 
 
       const reason = `Auto-reserved for allocation ${alloc.allocation_code}`;
       for (const { lot_id, green_quantity_g } of lotsToReserve) {
-        const { rows: existing } = await client.query(
-          `SELECT id FROM oec_lot_movements
-           WHERE lot_id = $1 AND movement_type = 'reservation' AND reason = $2`,
-          [lot_id, reason]
-        );
-        if (existing.length > 0) continue;
-
+        // Lock the lot row FIRST, then check for an existing reservation. Two
+        // concurrent transitions (double-click, client retry) will serialize
+        // on this FOR UPDATE lock — the second one only proceeds after the
+        // first commits, so its "existing" check below is guaranteed to see
+        // the first transaction's reservation row and skip instead of
+        // double-reserving. Checking "existing" before the lock (the old
+        // order) let both transactions pass the guard concurrently.
         const { rows: [lot] } = await client.query(
           'SELECT current_weight_g FROM oec_lots WHERE id = $1 AND tenant_id = $2 FOR UPDATE',
           [lot_id, tenant_id]
@@ -421,6 +449,14 @@ router.put('/:id/transition', requireRole('admin', 'roaster'), async (req, res) 
           await client.query('ROLLBACK');
           return res.status(404).json({ error: 'Linked lot not found.' });
         }
+
+        const { rows: existing } = await client.query(
+          `SELECT id FROM oec_lot_movements
+           WHERE lot_id = $1 AND movement_type = 'reservation' AND reason = $2`,
+          [lot_id, reason]
+        );
+        if (existing.length > 0) continue;
+
         const newWeight = lot.current_weight_g - green_quantity_g;
         if (newWeight < 0) {
           await client.query('ROLLBACK');

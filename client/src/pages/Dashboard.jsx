@@ -4,7 +4,7 @@ import { useAuth } from '../lib/auth';
 import Layout from '../components/Layout';
 import { api } from '../lib/api';
 import { StatCard, Button, StatusBadge } from '../components/ui';
-import { Flame, FlaskConical, UserPlus, Radio, TrendingDown, BarChart2 } from 'lucide-react';
+import { Flame, FlaskConical, UserPlus, Radio, TrendingDown, BarChart2, Clock, AlertTriangle } from 'lucide-react';
 
 const EVENT_COLORS = {
   inventory:  '#8B6A47',
@@ -21,6 +21,15 @@ const ACCENT_COLORS = {
   roasts:      '#EF9F27',
   buyers:      '#185FA5',
 };
+
+function daysUntil(dateStr) {
+  const diff = new Date(dateStr).getTime() - Date.now();
+  return Math.ceil(diff / 86400000);
+}
+function hoursSince(dateStr) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  return Math.floor(diff / 3600000);
+}
 
 function fmtRelative(dateStr) {
   if (!dateStr) return '';
@@ -224,6 +233,46 @@ export default function Dashboard() {
               </span>
               {' '}in storage over 12 months — quality may be degrading. Review inventory.
             </span>
+          </div>
+        )}
+
+        {/* Allocation windows closing soon */}
+        {stats?.allocationsClosingSoon?.length > 0 && (
+          <div
+            className="flex items-start gap-3 mb-5 px-4 py-3 rounded-xl border cursor-pointer"
+            style={{ background: '#FEF3C7', borderColor: '#F59E0B' }}
+            onClick={() => navigate('/allocations')}
+          >
+            <Clock size={15} className="flex-shrink-0 mt-0.5" style={{ color: '#92400E' }} />
+            <div className="text-sm" style={{ color: '#92400E' }}>
+              {stats.allocationsClosingSoon.map(a => {
+                const d = daysUntil(a.window_close_date);
+                const when = d <= 0 ? 'closes today' : d === 1 ? 'closes tomorrow' : `closes in ${d} days`;
+                return (
+                  <span key={a.id} className="mr-3">
+                    <span style={{ fontWeight: 500 }}>{a.allocation_code}</span> {when}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Stale in-progress roasts */}
+        {stats?.staleRoasts?.length > 0 && (
+          <div
+            className="flex items-start gap-3 mb-5 px-4 py-3 rounded-xl border cursor-pointer"
+            style={{ background: '#FCEBEB', borderColor: '#E8A0A0' }}
+            onClick={() => navigate('/roast')}
+          >
+            <AlertTriangle size={15} className="flex-shrink-0 mt-0.5" style={{ color: '#A32D2D' }} />
+            <div className="text-sm" style={{ color: '#A32D2D' }}>
+              {stats.staleRoasts.map(r => (
+                <span key={r.id} className="mr-3">
+                  <span style={{ fontWeight: 500 }}>{r.batch_code}</span> still in progress after {hoursSince(r.started_at)}h
+                </span>
+              ))}
+            </div>
           </div>
         )}
 

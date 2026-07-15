@@ -86,19 +86,26 @@ Do not add keys that were not present. If a note is already good, improve it sli
 // Analyzes a roast session's temperature curve for anomalies.
 // Accepts optional live_curve (array of {t, temp}) for mid-roast analysis.
 router.post('/roast-anomaly', async (req, res) => {
+  if (!checkPayloadSize(req, res)) return;
   const { session_id, live_curve, elapsed_s, is_live } = req.body;
   const tenant_id = req.user.tenant_id;
 
   if (!session_id) return res.status(400).json({ error: 'session_id required.' });
 
-  const { rows: [session] } = await pool.query(
-    `SELECT batch_code, charge_temp_c, eject_temp_c, dtr, total_time_seconds,
-            development_time_seconds, green_weight_in_g, roasted_weight_out_g,
-            variance_flagged, temperature_curve, is_development
-     FROM oec_roast_sessions
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [session_id, tenant_id]
-  );
+  let session;
+  try {
+    ({ rows: [session] } = await pool.query(
+      `SELECT batch_code, charge_temp_c, eject_temp_c, dtr, total_time_seconds,
+              development_time_seconds, green_weight_in_g, roasted_weight_out_g,
+              variance_flagged, temperature_curve, is_development
+       FROM oec_roast_sessions
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+      [session_id, tenant_id]
+    ));
+  } catch (err) {
+    console.error('[ai/roast-anomaly] DB error:', err.message);
+    return res.status(500).json({ error: 'Failed to load session.' });
+  }
   if (!session) return res.status(404).json({ error: 'Session not found.' });
 
   // For live analysis, prefer the provided curve over stored data (which isn't saved yet)
@@ -163,6 +170,7 @@ Analyze for anomalies and return JSON with keys:
 // ─── POST /api/ai/journal-draft ───────────────────────────────────────────────
 // AI-enhanced journal draft for an allocation.
 router.post('/journal-draft', async (req, res) => {
+  if (!checkPayloadSize(req, res)) return;
   const { allocation_id, doc_type } = req.body;
   const tenant_id = req.user.tenant_id;
 
@@ -170,35 +178,41 @@ router.post('/journal-draft', async (req, res) => {
     return res.status(400).json({ error: 'allocation_id and doc_type required.' });
   }
 
-  const { rows: [alloc] } = await pool.query(
-    'SELECT * FROM oec_allocations WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
-    [allocation_id, tenant_id]
-  );
-  if (!alloc) return res.status(404).json({ error: 'Allocation not found.' });
+  let alloc, roasts, cuppings;
+  try {
+    ({ rows: [alloc] } = await pool.query(
+      'SELECT * FROM oec_allocations WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
+      [allocation_id, tenant_id]
+    ));
+    if (!alloc) return res.status(404).json({ error: 'Allocation not found.' });
 
-  const { rows: roasts } = await pool.query(
-    `SELECT batch_code, started_at, status, green_weight_in_g, roasted_weight_out_g,
-            charge_temp_c, eject_temp_c, dtr, total_time_seconds, variance_flagged
-     FROM oec_roast_sessions
-     WHERE allocation_id = $1 AND is_development = false AND deleted_at IS NULL
-     ORDER BY started_at`,
-    [allocation_id]
-  );
+    ({ rows: roasts } = await pool.query(
+      `SELECT batch_code, started_at, status, green_weight_in_g, roasted_weight_out_g,
+              charge_temp_c, eject_temp_c, dtr, total_time_seconds, variance_flagged
+       FROM oec_roast_sessions
+       WHERE allocation_id = $1 AND is_development = false AND deleted_at IS NULL
+       ORDER BY started_at`,
+      [allocation_id]
+    ));
 
-  const { rows: cuppings } = await pool.query(
-    `SELECT cs.cupping_date, cs.cupping_purpose, cs.legacy_scoring,
-            s.score_fragrance_aroma, s.score_flavor, s.score_acidity, s.score_body,
-            s.score_balance, s.score_aftertaste, s.score_overall,
-            s.score_uniformity, s.score_clean_cup, s.score_sweetness,
-            s.acidity_intensity, s.body_level, s.defects_json,
-            s.obs_fragrance_dry, s.obs_aroma_wet, s.obs_flavor, s.final_decision
-     FROM oec_cupping_sessions cs
-     JOIN oec_cupping_samples s ON s.cupping_session_id = cs.id
-     JOIN oec_roast_sessions rs ON rs.id = s.roast_session_id
-     WHERE rs.allocation_id = $1
-     ORDER BY cs.cupping_date`,
-    [allocation_id]
-  );
+    ({ rows: cuppings } = await pool.query(
+      `SELECT cs.cupping_date, cs.cupping_purpose, cs.legacy_scoring,
+              s.score_fragrance_aroma, s.score_flavor, s.score_acidity, s.score_body,
+              s.score_balance, s.score_aftertaste, s.score_overall,
+              s.score_uniformity, s.score_clean_cup, s.score_sweetness,
+              s.acidity_intensity, s.body_level, s.defects_json,
+              s.obs_fragrance_dry, s.obs_aroma_wet, s.obs_flavor, s.final_decision
+       FROM oec_cupping_sessions cs
+       JOIN oec_cupping_samples s ON s.cupping_session_id = cs.id
+       JOIN oec_roast_sessions rs ON rs.id = s.roast_session_id
+       WHERE rs.allocation_id = $1
+       ORDER BY cs.cupping_date`,
+      [allocation_id]
+    ));
+  } catch (err) {
+    console.error('[ai/journal-draft] DB error:', err.message);
+    return res.status(500).json({ error: 'Failed to load allocation data.' });
+  }
 
   const context = JSON.stringify({ allocation: alloc, roasts, cuppings }, null, 2);
 
@@ -237,31 +251,38 @@ router.post('/journal-draft', async (req, res) => {
 // ─── POST /api/ai/stock-forecast ─────────────────────────────────────────────
 // Forecasts green stock depletion based on allocation velocity.
 router.post('/stock-forecast', async (req, res) => {
+  if (!checkPayloadSize(req, res)) return;
   const tenant_id = req.user.tenant_id;
 
-  const { rows: lots } = await pool.query(
-    `SELECT lot_code, estate, process, harvest_year, current_weight_g, arrival_date
-     FROM oec_lots WHERE tenant_id = $1 AND deleted_at IS NULL AND current_weight_g > 0
-     ORDER BY current_weight_g DESC`,
-    [tenant_id]
-  );
+  let lots, allocs, usageRow;
+  try {
+    ({ rows: lots } = await pool.query(
+      `SELECT lot_code, estate, process, harvest_year, current_weight_g, arrival_date
+       FROM oec_lots WHERE tenant_id = $1 AND deleted_at IS NULL AND current_weight_g > 0
+       ORDER BY current_weight_g DESC`,
+      [tenant_id]
+    ));
 
-  const { rows: allocs } = await pool.query(
-    `SELECT allocation_code, state, planned_green_quantity_g, process, created_at
-     FROM oec_allocations WHERE tenant_id = $1 AND deleted_at IS NULL
-       AND state NOT IN ('allocation_closed')
-     ORDER BY created_at DESC LIMIT 20`,
-    [tenant_id]
-  );
+    ({ rows: allocs } = await pool.query(
+      `SELECT allocation_code, state, planned_green_quantity_g, process, created_at
+       FROM oec_allocations WHERE tenant_id = $1 AND deleted_at IS NULL
+         AND state NOT IN ('allocation_closed')
+       ORDER BY created_at DESC LIMIT 20`,
+      [tenant_id]
+    ));
 
-  const { rows: [usageRow] } = await pool.query(
-    `SELECT COALESCE(AVG(planned_green_quantity_g), 0)::int AS avg_alloc_g,
-            COUNT(*)::int AS alloc_count_90d
-     FROM oec_allocations
-     WHERE tenant_id = $1 AND deleted_at IS NULL
-       AND created_at > NOW() - INTERVAL '90 days'`,
-    [tenant_id]
-  );
+    ({ rows: [usageRow] } = await pool.query(
+      `SELECT COALESCE(AVG(planned_green_quantity_g), 0)::int AS avg_alloc_g,
+              COUNT(*)::int AS alloc_count_90d
+       FROM oec_allocations
+       WHERE tenant_id = $1 AND deleted_at IS NULL
+         AND created_at > NOW() - INTERVAL '90 days'`,
+      [tenant_id]
+    ));
+  } catch (err) {
+    console.error('[ai/stock-forecast] DB error:', err.message);
+    return res.status(500).json({ error: 'Failed to load inventory data.' });
+  }
 
   const context = JSON.stringify({ lots, activeAllocations: allocs, usage90d: usageRow }, null, 2);
 
@@ -297,21 +318,28 @@ router.post('/stock-forecast', async (req, res) => {
 // ─── POST /api/ai/yield-patterns ─────────────────────────────────────────────
 // Identifies yield variance patterns across roast sessions.
 router.post('/yield-patterns', async (req, res) => {
+  if (!checkPayloadSize(req, res)) return;
   const tenant_id = req.user.tenant_id;
 
-  const { rows: sessions } = await pool.query(
-    `SELECT rs.batch_code, rs.started_at, rs.green_weight_in_g, rs.roasted_weight_out_g,
-            rs.charge_temp_c, rs.eject_temp_c, rs.dtr, rs.total_time_seconds,
-            rs.variance_flagged, rs.is_development,
-            a.process, a.estate
-     FROM oec_roast_sessions rs
-     LEFT JOIN oec_allocations a ON a.id = rs.allocation_id
-     WHERE rs.tenant_id = $1 AND rs.deleted_at IS NULL
-       AND rs.status = 'approved_for_bagging'
-       AND rs.roasted_weight_out_g IS NOT NULL
-     ORDER BY rs.started_at DESC LIMIT 50`,
-    [tenant_id]
-  );
+  let sessions;
+  try {
+    ({ rows: sessions } = await pool.query(
+      `SELECT rs.batch_code, rs.started_at, rs.green_weight_in_g, rs.roasted_weight_out_g,
+              rs.charge_temp_c, rs.eject_temp_c, rs.dtr, rs.total_time_seconds,
+              rs.variance_flagged, rs.is_development,
+              a.process, a.estate
+       FROM oec_roast_sessions rs
+       LEFT JOIN oec_allocations a ON a.id = rs.allocation_id
+       WHERE rs.tenant_id = $1 AND rs.deleted_at IS NULL
+         AND rs.status = 'approved_for_bagging'
+         AND rs.roasted_weight_out_g IS NOT NULL
+       ORDER BY rs.started_at DESC LIMIT 50`,
+      [tenant_id]
+    ));
+  } catch (err) {
+    console.error('[ai/yield-patterns] DB error:', err.message);
+    return res.status(500).json({ error: 'Failed to load roast session data.' });
+  }
 
   if (sessions.length < 3) {
     return res.json({ patterns: { summary: 'Not enough approved sessions to detect patterns yet (need at least 3).', patterns: [], recommendations: [] } });

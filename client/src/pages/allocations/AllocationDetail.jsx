@@ -337,6 +337,11 @@ export default function AllocationDetail() {
   const isClosed   = a.state === 'allocation_closed';
   const isArchived = !!a.archived_at;
   const isAdmin    = ['admin', 'roaster'].includes(user?.role);
+  // Editing request fields and deleting a request are admin-only on the
+  // backend (PUT/DELETE .../requests/:req_id) — confirm/fulfil transitions
+  // are allowed for both admin and roaster. Roasters used to see enabled
+  // Edit/Delete buttons that always 403'd; gate those specifically.
+  const canEditRequest = user?.role === 'admin';
   const bagPct    = projected_bags > 0 ? Math.min(100, Math.round((confirmed_bags / projected_bags) * 100)) : 0;
   const bagBarColor = bagPct >= 100 ? '#A32D2D' : bagPct >= 90 ? '#BA7517' : '#3B6D11';
   const allChecksPassed = transitionChecks?.checks?.every(c => c.passed) ?? true;
@@ -610,7 +615,7 @@ export default function AllocationDetail() {
                         </span>
                       </td>
                       <td className="py-2 text-right">
-                        {isAdmin && !isClosed && editingReq?.id === r.id ? (
+                        {canEditRequest && !isClosed && editingReq?.id === r.id ? (
                           <input
                             type="number" min={1}
                             value={editingReq.quantity_bags}
@@ -642,9 +647,11 @@ export default function AllocationDetail() {
                               </>
                             ) : (
                               <>
-                                <button onClick={() => setEditingReq({ id: r.id, quantity_bags: r.quantity_bags })} className="text-xs text-coffee-400 hover:text-coffee-700 transition-colors">
-                                  Edit
-                                </button>
+                                {canEditRequest && (
+                                  <button onClick={() => setEditingReq({ id: r.id, quantity_bags: r.quantity_bags })} className="text-xs text-coffee-400 hover:text-coffee-700 transition-colors">
+                                    Edit
+                                  </button>
+                                )}
                                 {r.status === 'pending' && (
                                   <button onClick={() => updateReqStatus(r.id, 'confirmed')} disabled={!!rowActioning[r.id]} className="text-xs transition-colors disabled:opacity-40" style={{ color: '#3B6D11' }}>
                                     {rowActioning[r.id] ? '…' : 'Confirm'}
@@ -655,9 +662,11 @@ export default function AllocationDetail() {
                                     {rowActioning[r.id] ? '…' : 'Fulfil'}
                                   </button>
                                 )}
-                                <button onClick={() => deleteReq(r.id)} disabled={!!rowActioning[r.id]} className="text-xs transition-colors disabled:opacity-40" style={{ color: '#A32D2D' }}>
-                                  Delete
-                                </button>
+                                {canEditRequest && (
+                                  <button onClick={() => deleteReq(r.id)} disabled={!!rowActioning[r.id]} className="text-xs transition-colors disabled:opacity-40" style={{ color: '#A32D2D' }}>
+                                    Delete
+                                  </button>
+                                )}
                               </>
                             )}
                           </div>

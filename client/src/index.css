@@ -5,25 +5,25 @@
 @tailwind utilities;
 
 :root {
-  /* Status colors — grayscale */
+  /* Status colors — draft=grey, under_review=amber, published=green, missing=red-outline */
   --status-draft-text: #525252;
   --status-draft-bg: #F0F0F0;
-  --status-review-text: #262626;
-  --status-review-bg: #D4D4D4;
-  --status-published-text: #FFFFFF;
-  --status-published-bg: #0A0A0A;
-  --status-missing-text: #0A0A0A;
+  --status-review-text: #92400E;
+  --status-review-bg: #FEF3C7;
+  --status-published-text: #166534;
+  --status-published-bg: #DCFCE7;
+  --status-missing-text: #DC2626;
   --status-missing-bg: #FFFFFF;
 
-  /* Process colors — grayscale */
-  --process-washed-text: #404040;
-  --process-washed-bg: #E5E5E5;
-  --process-honey-text: #262626;
-  --process-honey-bg: #D4D4D4;
-  --process-natural-text: #FFFFFF;
-  --process-natural-bg: #404040;
-  --process-anaerobic-text: #FFFFFF;
-  --process-anaerobic-bg: #171717;
+  /* Process colors — Washed=blue, Honey=amber, Natural=green, Anaerobic=purple */
+  --process-washed-text: #1E4DA1;
+  --process-washed-bg: #EBF3FF;
+  --process-honey-text: #92400E;
+  --process-honey-bg: #FEF3C7;
+  --process-natural-text: #166534;
+  --process-natural-bg: #DCFCE7;
+  --process-anaerobic-text: #6B21A8;
+  --process-anaerobic-bg: #F3E8FF;
 
   /* Event colors (timeline) */
   --event-roast: #525252;
@@ -79,7 +79,7 @@
 .badge-draft        { color: var(--status-draft-text);     background: var(--status-draft-bg); }
 .badge-under-review { color: var(--status-review-text);    background: var(--status-review-bg); }
 .badge-published    { color: var(--status-published-text); background: var(--status-published-bg); }
-.badge-missing      { color: var(--status-missing-text);   background: var(--status-missing-bg); border: 1px solid #0A0A0A; }
+.badge-missing      { color: var(--status-missing-text);   background: var(--status-missing-bg); border: 1px solid var(--status-missing-text); }
 
 /* Process badge classes */
 .badge-washed    { color: var(--process-washed-text);    background: var(--process-washed-bg); }

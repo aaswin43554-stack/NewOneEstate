@@ -66,6 +66,90 @@ router.post(
   }
 );
 
+const IMPORT_PROCESSES = ['Washed', 'Honey', 'Natural', 'Anaerobic'];
+const MAX_IMPORT_ROWS = 500;
+
+// Validates one CSV-derived row against the same rules as POST / above.
+// Returns { errors, values } — values are only meaningful when errors is empty.
+function validateLotRow(row) {
+  const errors = [];
+  const lot_code           = String(row.lot_code ?? '').trim();
+  const estate              = String(row.estate ?? '').trim();
+  const process             = String(row.process ?? '').trim();
+  const harvest_year        = parseInt(row.harvest_year, 10);
+  const arrival_date        = String(row.arrival_date ?? '').trim();
+  const arrival_weight_g    = parseInt(row.arrival_weight_g, 10);
+  const storage_location    = String(row.storage_location ?? '').trim();
+  const moisture_content    = row.moisture_content !== undefined && row.moisture_content !== '' ? parseFloat(row.moisture_content) : null;
+  const water_activity      = row.water_activity   !== undefined && row.water_activity   !== '' ? parseFloat(row.water_activity)   : null;
+  const supplier_notes      = row.supplier_notes ? String(row.supplier_notes) : null;
+
+  if (!lot_code) errors.push('lot_code is required');
+  if (!estate) errors.push('estate is required');
+  if (!IMPORT_PROCESSES.includes(process)) errors.push('process must be one of Washed, Honey, Natural, Anaerobic');
+  if (!Number.isInteger(harvest_year) || harvest_year < 2000 || harvest_year > 2100) errors.push('harvest_year must be a valid year');
+  if (!arrival_date || isNaN(new Date(arrival_date).getTime())) errors.push('arrival_date must be a valid date (YYYY-MM-DD)');
+  if (!Number.isInteger(arrival_weight_g) || arrival_weight_g < 1 || arrival_weight_g > 2147483647) errors.push('arrival_weight_g must be a positive integer (grams)');
+  if (!storage_location) errors.push('storage_location is required');
+  if (moisture_content != null && (isNaN(moisture_content) || moisture_content < 0 || moisture_content > 100)) errors.push('moisture_content must be between 0 and 100');
+  if (water_activity != null && (isNaN(water_activity) || water_activity < 0 || water_activity > 1)) errors.push('water_activity must be between 0 and 1');
+
+  return {
+    errors,
+    values: { lot_code, estate, process, harvest_year, arrival_date, arrival_weight_g, storage_location, moisture_content, water_activity, supplier_notes },
+  };
+}
+
+// POST /api/lots/import — bulk-create lots from CSV rows parsed client-side.
+// Each row is validated and inserted independently so one bad row doesn't
+// block the rest; the response reports per-row success/failure.
+router.post('/import', requireRole('admin', 'roaster'), async (req, res) => {
+  const { rows } = req.body;
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return res.status(400).json({ error: 'rows must be a non-empty array.' });
+  }
+  if (rows.length > MAX_IMPORT_ROWS) {
+    return res.status(400).json({ error: `Cannot import more than ${MAX_IMPORT_ROWS} rows at once.` });
+  }
+
+  const created = [];
+  const failed  = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const { errors, values } = validateLotRow(rows[i]);
+    if (errors.length > 0) {
+      failed.push({ row: i + 1, lot_code: rows[i]?.lot_code || null, error: errors.join('; ') });
+      continue;
+    }
+    try {
+      const { rows: [lot] } = await pool.query(
+        `INSERT INTO oec_lots
+           (tenant_id, lot_code, estate, process, harvest_year, arrival_date,
+            arrival_weight_g, current_weight_g, storage_location, moisture_content,
+            water_activity, supplier_notes, created_by, updated_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$7,$8,$9,$10,$11,$12,$12)
+         RETURNING id, lot_code`,
+        [
+          req.user.tenant_id, values.lot_code, values.estate, values.process, values.harvest_year, values.arrival_date,
+          values.arrival_weight_g, values.storage_location,
+          values.moisture_content, values.water_activity, values.supplier_notes,
+          req.user.id,
+        ]
+      );
+      created.push({ row: i + 1, id: lot.id, lot_code: lot.lot_code });
+    } catch (err) {
+      if (err.code === '23505') {
+        failed.push({ row: i + 1, lot_code: values.lot_code, error: 'Lot code already exists for this tenant.' });
+      } else {
+        console.error('Import lot row', i + 1, ':', err);
+        failed.push({ row: i + 1, lot_code: values.lot_code, error: 'Failed to create lot.' });
+      }
+    }
+  }
+
+  return res.json({ created, failed });
+});
+
 // GET /api/lots
 router.get(
   '/',

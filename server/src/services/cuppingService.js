@@ -65,7 +65,7 @@ function generateJournalDraft(sample, roast_session, process, days_off_roast, le
     ];
     for (const { key, label } of attrs) {
       const score = sample[`score_${key}`];
-      const obs   = sample[`obs_${key}`] || sample[`obs_fragrance_dry`];
+      const obs   = sample[`obs_${key}`];
       if (obs && obs.trim()) {
         text += ` ${label} ${score}/10 — ${obs.trim()}.`;
       } else {

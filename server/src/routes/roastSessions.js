@@ -67,41 +67,53 @@ router.post('/', requireRole('admin', 'roaster'), async (req, res) => {
     sessionProcess = allocation.process;
   }
 
-  try {
-    const batch_code = await generateBatchCode({
-      is_development,
-      tenant_id,
-      allocation_id: allocation_id || null,
-      allocation_code: allocation ? allocation.allocation_code : null,
-      process: sessionProcess,
-    });
-
-    const { rows: [session] } = await pool.query(
-      `INSERT INTO oec_roast_sessions
-         (tenant_id, allocation_id, is_development, batch_code, green_weight_in_g,
-          charge_temp_c, estate, process_description, moisture_pct,
-          status, started_at, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'in_progress',$10,$11,$11)
-       RETURNING *`,
-      [
+  // batch_code sequence numbers are derived from a plain COUNT(*), not a
+  // locked sequence, so two sessions created at the same instant (common on
+  // a roasting floor with concurrent stations) can compute the same code.
+  // The DB's unique constraint catches the collision (23505) — rather than
+  // surfacing that as an error for the user to manually retry, regenerate
+  // and retry server-side a few times first.
+  const MAX_ATTEMPTS = 5;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const batch_code = await generateBatchCode({
+        is_development,
         tenant_id,
-        allocation_id || null,
-        !!is_development,
-        batch_code,
-        parseInt(green_weight_in_g),
-        parseFloat(charge_temp_c),
-        is_development ? (estate || null) : null,
-        is_development ? (process_description || null) : null,
-        is_development ? (moisture_pct != null ? parseFloat(moisture_pct) : null) : null,
-        started_at ? new Date(started_at) : new Date(),
-        req.user.id,
-      ]
-    );
-    return res.status(201).json({ session });
-  } catch (err) {
-    if (err.code === '23505') return res.status(409).json({ error: 'Batch code conflict. Please retry.' });
-    console.error('Create session:', err);
-    return res.status(500).json({ error: 'Failed to create roast session.' });
+        allocation_id: allocation_id || null,
+        allocation_code: allocation ? allocation.allocation_code : null,
+        process: sessionProcess,
+      });
+
+      const { rows: [session] } = await pool.query(
+        `INSERT INTO oec_roast_sessions
+           (tenant_id, allocation_id, is_development, batch_code, green_weight_in_g,
+            charge_temp_c, estate, process_description, moisture_pct,
+            status, started_at, created_by, updated_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'in_progress',$10,$11,$11)
+         RETURNING *`,
+        [
+          tenant_id,
+          allocation_id || null,
+          !!is_development,
+          batch_code,
+          parseInt(green_weight_in_g),
+          parseFloat(charge_temp_c),
+          is_development ? (estate || null) : null,
+          is_development ? (process_description || null) : null,
+          is_development ? (moisture_pct != null ? parseFloat(moisture_pct) : null) : null,
+          started_at ? new Date(started_at) : new Date(),
+          req.user.id,
+        ]
+      );
+      return res.status(201).json({ session });
+    } catch (err) {
+      if (err.code === '23505') {
+        if (attempt < MAX_ATTEMPTS) continue;
+        return res.status(409).json({ error: 'Batch code conflict. Please retry.' });
+      }
+      console.error('Create session:', err);
+      return res.status(500).json({ error: 'Failed to create roast session.' });
+    }
   }
 });
 
@@ -336,6 +348,19 @@ router.patch('/:id/data', requireRole('admin', 'roaster'), async (req, res) => {
     [id, tenant_id]
   );
   if (!session) return res.status(404).json({ error: 'Session not found.' });
+
+  // Guard numeric fields against INTEGER overflow before the DB write, same
+  // as PUT /:id/complete — this endpoint edits the same columns and was
+  // previously missing this check, surfacing oversized input as an opaque 500.
+  const vData = validateInts(req.body, [
+    { key: 'roasted_weight_out_g',     label: 'Roasted weight (g)',     min: 1 },
+    { key: 'total_time_seconds',       label: 'Total time (s)',         min: 1, max: 86400 },
+    { key: 'development_time_seconds', label: 'Development time (s)',   min: 1, max: 86400 },
+    { key: 'tp_time_seconds',          label: 'Turning-point time (s)', min: 0, max: 86400 },
+    { key: 'yellow_time_seconds',      label: 'Yellow time (s)',        min: 0, max: 86400 },
+    { key: 'first_crack_time_seconds', label: 'First-crack time (s)',   min: 0, max: 86400 },
+  ]);
+  if (!vData.ok) return res.status(400).json({ error: vData.error });
 
   const devTime = development_time_seconds != null ? parseInt(development_time_seconds) : session.development_time_seconds;
   const totalTime = total_time_seconds != null ? parseInt(total_time_seconds) : session.total_time_seconds;

@@ -97,13 +97,17 @@ export default function RoastLive() {
   const [error,      setError]      = useState('');
   const [saving,     setSaving]     = useState(false);
   const [hwLost,     setHwLost]     = useState(false);
+  const [wsDown,     setWsDown]     = useState(false);
   const [aiAlert,    setAiAlert]    = useState(null);   // { anomalies, overall_assessment }
   const [aiChecking, setAiChecking] = useState(false);
   const aiTriggeredAt = useRef(new Set()); // track which pct thresholds have fired
 
-  const wsRef    = useRef(null);
-  const timerRef = useRef(null);
-  const startRef = useRef(null);
+  const wsRef       = useRef(null);
+  const timerRef    = useRef(null);
+  const startRef    = useRef(null);
+  const mountedRef  = useRef(true);
+  const reconnectTimerRef    = useRef(null);
+  const reconnectAttemptsRef = useRef(0);
 
   // Load session + profile
   useEffect(() => {
@@ -133,24 +137,49 @@ export default function RoastLive() {
       .catch(() => {});
   }, [id]);
 
-  // WebSocket
+  // WebSocket — reconnects with backoff on any drop (network blip, redeploy,
+  // sleep/wake) instead of silently going quiet with no UI indication.
   useEffect(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const token = localStorage.getItem('access_token') || '';
-    const ws = new WebSocket(`${protocol}//${window.location.host}/ws/roast-live?session_id=${id}&token=${encodeURIComponent(token)}`);
-    wsRef.current = ws;
-    ws.onmessage = (e) => {
-      const data = JSON.parse(e.data);
-      if (data.t !== undefined) {
-        setPoints(prev => [...prev, { t: data.t, temp: data.temp, et: data.et }]);
-        setCurrentTemp(data.temp);
-      } else if (data.event === 'eject_suggested') {
-        setCompleteOpen(true);
-      } else if (data.event === 'hardware_disconnected') {
-        setHwLost(true);
-      }
+    mountedRef.current = true;
+
+    function connect() {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const token = localStorage.getItem('access_token') || '';
+      const ws = new WebSocket(`${protocol}//${window.location.host}/ws/roast-live?session_id=${id}&token=${encodeURIComponent(token)}`);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        reconnectAttemptsRef.current = 0;
+        setWsDown(false);
+      };
+      ws.onmessage = (e) => {
+        const data = JSON.parse(e.data);
+        if (data.t !== undefined) {
+          setPoints(prev => [...prev, { t: data.t, temp: data.temp, et: data.et }]);
+          setCurrentTemp(data.temp);
+        } else if (data.event === 'eject_suggested') {
+          setCompleteOpen(true);
+        } else if (data.event === 'hardware_disconnected') {
+          setHwLost(true);
+        }
+      };
+      ws.onerror = () => { /* onclose fires next and drives reconnect */ };
+      ws.onclose = () => {
+        if (!mountedRef.current) return;
+        setWsDown(true);
+        const attempt = ++reconnectAttemptsRef.current;
+        const delay = Math.min(1000 * 2 ** (attempt - 1), 15000);
+        reconnectTimerRef.current = setTimeout(connect, delay);
+      };
+    }
+
+    connect();
+
+    return () => {
+      mountedRef.current = false;
+      clearTimeout(reconnectTimerRef.current);
+      wsRef.current?.close();
     };
-    return () => ws.close();
   }, [id]);
 
   // Timer
@@ -229,6 +258,8 @@ export default function RoastLive() {
       if (d.session.variance_flagged) {
         setVarianceBanner({ actual: parseInt(completeForm.ejectTemp), target: d.profile_eject_temp_c });
       }
+      mountedRef.current = false; // roast is done — don't reconnect when the server closes the socket
+      clearTimeout(reconnectTimerRef.current);
       wsRef.current?.send('complete');
       setTimeout(() => navigate(`/roast/${id}`), 1500);
     } catch { setError('Network error.'); }
@@ -252,11 +283,23 @@ export default function RoastLive() {
           <div className="flex items-center gap-2">
             <span
               className="w-2 h-2 rounded-full"
-              style={{ background: '#3B6D11', boxShadow: '0 0 0 4px #EAF3DE' }}
+              style={wsDown
+                ? { background: '#A32D2D' }
+                : { background: '#3B6D11', boxShadow: '0 0 0 4px #EAF3DE' }}
             />
-            <span className="text-xs text-coffee-500">Live</span>
+            <span className="text-xs text-coffee-500">{wsDown ? 'Reconnecting…' : 'Live'}</span>
           </div>
         </div>
+
+        {/* Connection lost banner */}
+        {wsDown && (
+          <div
+            className="mb-4 px-4 py-3 rounded-xl text-sm"
+            style={{ background: '#FCEBEB', color: '#A32D2D' }}
+          >
+            Connection lost — attempting to reconnect. Temperature readings may be missing until reconnected.
+          </div>
+        )}
 
         {/* Hardware disconnected banner */}
         {hwLost && (

@@ -166,6 +166,8 @@ app.get('/api/dashboard-stats', requireAuth, async (req, res) => {
       { rows: [{ requested_bags }] },
       { rows: activeAllocsList },
       { rows: [{ quality_alert_lots }] },
+      { rows: closingSoonList },
+      { rows: staleRoastsList },
       { rows: activityRows },
     ] = await Promise.all([
       pool.query("SELECT COALESCE(SUM(current_weight_g), 0)::bigint AS total_stock FROM oec_lots WHERE tenant_id = $1 AND deleted_at IS NULL", [tenant_id]),
@@ -175,6 +177,25 @@ app.get('/api/dashboard-stats', requireAuth, async (req, res) => {
       pool.query(`SELECT COALESCE(SUM(r.quantity_bags), 0)::int AS requested_bags FROM oec_allocation_requests r JOIN oec_allocations a ON a.id = r.allocation_id WHERE r.tenant_id = $1 AND r.status != 'fulfilled' AND a.state != 'allocation_closed' AND a.deleted_at IS NULL`, [tenant_id]),
       pool.query("SELECT id, allocation_code, state, process FROM oec_allocations WHERE tenant_id = $1 AND state = 'open_for_requests' AND deleted_at IS NULL LIMIT 1", [tenant_id]),
       pool.query("SELECT COUNT(*)::int AS quality_alert_lots FROM oec_lots WHERE tenant_id = $1 AND deleted_at IS NULL AND current_weight_g > 0 AND arrival_date < NOW() - INTERVAL '365 days'", [tenant_id]),
+      // Allocation windows closing within 3 days that are still open for requests
+      pool.query(
+        `SELECT id, allocation_code, window_close_date
+         FROM oec_allocations
+         WHERE tenant_id = $1 AND deleted_at IS NULL AND state = 'open_for_requests'
+           AND window_close_date IS NOT NULL
+           AND window_close_date <= (NOW() + INTERVAL '3 days')
+         ORDER BY window_close_date ASC LIMIT 5`,
+        [tenant_id]
+      ),
+      // Roast sessions stuck in_progress for more than 4 hours — likely abandoned/forgotten
+      pool.query(
+        `SELECT id, batch_code, started_at
+         FROM oec_roast_sessions
+         WHERE tenant_id = $1 AND deleted_at IS NULL AND status = 'in_progress'
+           AND started_at < NOW() - INTERVAL '4 hours'
+         ORDER BY started_at ASC LIMIT 5`,
+        [tenant_id]
+      ),
       pool.query(`
         SELECT * FROM (
           SELECT 'inventory' AS type,
@@ -236,6 +257,8 @@ app.get('/api/dashboard-stats', requireAuth, async (req, res) => {
       totalBagsRequested: requested_bags,
       activeAllocation: activeAllocsList[0] || null,
       qualityAlertLotsCount: quality_alert_lots,
+      allocationsClosingSoon: closingSoonList,
+      staleRoasts: staleRoastsList,
       recentActivity: activityRows.map(r => ({ type: r.type, description: r.description, timestamp: r.ts })),
     });
   } catch (err) {

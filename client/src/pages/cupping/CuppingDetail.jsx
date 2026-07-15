@@ -137,7 +137,12 @@ export default function CuppingDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  // PUT /cupping-sessions/:id and PUT .../samples/:sample_id (used by Edit,
+  // via saveEdit) allow admin AND roaster on the backend; only DELETE is
+  // admin-only. These used to share one `isAdmin` flag, hiding Edit from
+  // roasters who are actually permitted to use it.
+  const canEdit   = ['admin', 'roaster'].includes(user?.role);
+  const isAdmin   = user?.role === 'admin';
   const [session,     setSession]     = useState(null);
   const [samples,     setSamples]     = useState([]);
   const [loading,     setLoading]     = useState(true);
@@ -341,22 +346,26 @@ export default function CuppingDetail() {
               Legacy 70-pt
             </span>
           )}
-          {isAdmin && (
+          {(canEdit || isAdmin) && (
             <div className="ml-auto flex items-center gap-2">
-              <button
-                onClick={openEditModal}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors"
-                style={{ borderColor: '#E0D0BC', color: '#8B6A47' }}
-              >
-                <Pencil size={12} /> Edit
-              </button>
-              <button
-                onClick={() => { setDeleteError(''); setDeleteOpen(true); }}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors"
-                style={{ borderColor: '#F3C0C0', color: '#A32D2D' }}
-              >
-                <Trash2 size={12} /> Delete
-              </button>
+              {canEdit && (
+                <button
+                  onClick={openEditModal}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors"
+                  style={{ borderColor: '#E0D0BC', color: '#8B6A47' }}
+                >
+                  <Pencil size={12} /> Edit
+                </button>
+              )}
+              {isAdmin && (
+                <button
+                  onClick={() => { setDeleteError(''); setDeleteOpen(true); }}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors"
+                  style={{ borderColor: '#F3C0C0', color: '#A32D2D' }}
+                >
+                  <Trash2 size={12} /> Delete
+                </button>
+              )}
             </div>
           )}
         </div>

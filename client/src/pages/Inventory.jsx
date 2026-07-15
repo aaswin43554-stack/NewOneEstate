@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import Layout from '../components/Layout';
 import AddLotModal from '../components/AddLotModal';
+import ImportLotsModal from '../components/ImportLotsModal';
 import {
   PageHeader, Button, FilterPills, ProcessBadge, StatusBadge,
   DataTable, RightPanel, PanelField, EmptyState,
@@ -90,6 +91,7 @@ export default function Inventory() {
   const [processF,   setProcessF]   = useState('All');
   const [yearF,      setYearF]      = useState('All');
   const [showModal,  setShowModal]  = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [panelLot,   setPanelLot]   = useState(null);
   const [panelOpen,  setPanelOpen]  = useState(false);
 
@@ -157,6 +159,9 @@ export default function Inventory() {
             <div className="flex gap-2">
               <Button variant="ghost" onClick={() => triggerExport('csv')}>CSV</Button>
               <Button variant="ghost" onClick={() => triggerExport('json')}>JSON</Button>
+              {canWrite && (
+                <Button variant="ghost" onClick={() => setShowImport(true)}>Import CSV</Button>
+              )}
               {canWrite && (
                 <Button variant="primary" onClick={() => setShowModal(true)}>+ New Lot</Button>
               )}
@@ -259,6 +264,13 @@ export default function Inventory() {
         <AddLotModal
           onClose={() => setShowModal(false)}
           onCreated={() => { setShowModal(false); fetchLots(); }}
+        />
+      )}
+
+      {showImport && (
+        <ImportLotsModal
+          onClose={() => setShowImport(false)}
+          onImported={fetchLots}
         />
       )}
     </Layout>

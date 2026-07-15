@@ -252,7 +252,7 @@ export default function RoastList() {
           ]}
           rows={sessions}
           loading={loading}
-          onRowClick={s => navigate(`/roast/${s.id}`)}
+          onRowClick={s => navigate(s.status === 'in_progress' ? `/roast/${s.id}/live` : `/roast/${s.id}`)}
           emptyMessage={`No ${mode} roast sessions yet.`}
           keyField="id"
         />
