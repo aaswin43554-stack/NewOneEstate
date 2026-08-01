@@ -30,5 +30,9 @@
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
+  },
+  "allowScripts": {
+    "@serialport/bindings-cpp@12.0.1": true,
+    "esbuild@0.21.5": true
   }
 }
