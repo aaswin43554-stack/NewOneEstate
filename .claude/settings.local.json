@@ -73,7 +73,8 @@
       "Bash(xargs grep -n \"deleted_at\\\\|CREATE TABLE\")",
       "PowerShell(Get-Content *)",
       "Bash(npm --version)",
-      "PowerShell(Get-ChildItem *)"
+      "PowerShell(Get-ChildItem *)",
+      "Artifact"
     ]
   }
 }

@@ -46,8 +46,33 @@ const { setupRoastWebSocket } = require('./services/roastHardware');
 const app  = express();
 const PORT = process.env.PORT || 3001;
 
-// Security headers
-app.use(helmet({ contentSecurityPolicy: false }));
+// Render sits directly in front of this app as a single reverse-proxy hop.
+// Without this, req.ip resolves to Render's proxy address for every request,
+// so the rate limiters below key off one shared "IP" for the whole user base
+// (one user's failed logins could lock out everyone) and the request logger's
+// [ip] field is useless for tracing abuse back to a real client.
+app.set('trust proxy', 1);
+
+// Security headers. CSP is scoped to what this SPA actually loads: same-origin
+// script/API/WS traffic, Google Fonts stylesheets, and data: URIs for the
+// base64 QR code images rendered on labels/journal pages. 'unsafe-inline' on
+// style-src is required because the UI uses React inline `style={{}}` props
+// extensively — without it every inline-styled element would be stripped.
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+      imgSrc: ["'self'", 'data:'],
+      connectSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      frameAncestors: ["'self'"],
+    },
+  },
+}));
 
 // Gzip all responses — biggest win on JSON-heavy API responses
 app.use(compression());
@@ -120,6 +145,31 @@ const aiLimiter = rateLimit({
   message: { error: 'Too many AI requests, please slow down.' },
 });
 app.use('/api/ai', aiLimiter);
+
+// Public (unauthenticated) journal/allocation lookups — no JWT required, so
+// nothing else caps request volume on these DB-backed endpoints. Without a
+// limiter here they're the cheapest path for a scraper or DoS attempt to
+// hammer the database from a single IP.
+const publicLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
+});
+app.use('/api/public', publicLimiter);
+
+// General API rate limit — a coarse ceiling on every authenticated route so a
+// leaked/compromised token or a buggy client can't hammer the DB unbounded.
+// Generous enough to never trip during normal UI use.
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please slow down.' },
+});
+app.use('/api', apiLimiter);
 
 // Request logger — logs every incoming request and its response status/time
 app.use((req, res, next) => {
