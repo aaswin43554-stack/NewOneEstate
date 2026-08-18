@@ -41,6 +41,7 @@ const contactRoutes       = require('./routes/contacts');
 const journalRoutes       = require('./routes/journal');
 const exportRoutes        = require('./routes/export');
 const aiRoutes            = require('./routes/ai');
+const hardwareRoutes      = require('./routes/hardware');
 const { setupRoastWebSocket } = require('./services/roastHardware');
 
 const app  = express();
@@ -202,6 +203,7 @@ app.use('/api/contacts',         contactRoutes);
 app.use('/api/journal',          journalRoutes);
 app.use('/api/export',           exportRoutes);
 app.use('/api/ai',               aiRoutes);
+app.use('/api/hardware',         hardwareRoutes);
 
 // Dashboard Stats Endpoint
 app.get('/api/dashboard-stats', requireAuth, async (req, res) => {

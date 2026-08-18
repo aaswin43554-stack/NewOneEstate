@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import Layout from '../components/Layout';
+import HardwareConfigModal from '../components/HardwareConfigModal';
 import { api } from '../lib/api';
 import { StatCard, Button, StatusBadge } from '../components/ui';
 import { Flame, FlaskConical, UserPlus, Radio, TrendingDown, BarChart2, Clock, AlertTriangle } from 'lucide-react';
@@ -105,12 +106,20 @@ export default function Dashboard() {
   const [patternsError,   setPatternsError]   = useState('');
   const [showForecast,    setShowForecast]    = useState(false);
   const [showPatterns,    setShowPatterns]    = useState(false);
+  const [showHwModal,     setShowHwModal]     = useState(false);
+  const [hwStatus,        setHwStatus]        = useState({ connected: false, portPath: null });
 
   useEffect(() => {
     api.get('/dashboard-stats')
       .then(r => r.json())
       .then(d => { setStats(d); setLoading(false); })
       .catch(() => setLoading(false));
+
+    // Fetch hardware status on mount
+    api.get('/hardware/status')
+      .then(r => r.json())
+      .then(setHwStatus)
+      .catch(() => {});
   }, []);
 
   async function loadForecast() {
@@ -349,59 +358,95 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Right: Pending Actions */}
-          <div className="bg-white border border-coffee-200 rounded-xl p-5">
-            <p
-              className="text-xs text-coffee-400 uppercase tracking-wide mb-4"
-              style={{ letterSpacing: '0.08em' }}
-            >
-              Needs Attention
-            </p>
-            {pendingActions.length === 0 ? (
-              <p className="text-sm text-coffee-300 py-8 text-center">
-                Nothing pending — you're all caught up.
+          {/* Right Column: Pending Actions & Hardware */}
+          <div className="space-y-5">
+            {/* Needs Attention */}
+            <div className="bg-white border border-coffee-200 rounded-xl p-5">
+              <p
+                className="text-xs text-coffee-400 uppercase tracking-wide mb-4"
+                style={{ letterSpacing: '0.08em' }}
+              >
+                Needs Attention
               </p>
-            ) : (
-              pendingActions.map((action, i) => (
-                <PendingAction key={i} action={action} />
-              ))
-            )}
+              {pendingActions.length === 0 ? (
+                <p className="text-sm text-coffee-300 py-8 text-center">
+                  Nothing pending — you're all caught up.
+                </p>
+              ) : (
+                pendingActions.map((action, i) => (
+                  <PendingAction key={i} action={action} />
+                ))
+              )}
 
-            {/* Module shortcuts */}
-            <div className="mt-4 space-y-1.5">
-              {[
-                { label: 'View roast sessions',    icon: <Flame size={13} />,       to: '/roast' },
-                { label: 'Open cupping records',   icon: <FlaskConical size={13} />, to: '/cupping' },
-                { label: 'Add new contact',        icon: <UserPlus size={13} />,    to: '/contacts/new' },
-              ].map(link => (
-                <button
-                  key={link.to}
-                  onClick={() => navigate(link.to)}
-                  className="flex items-center gap-2 w-full text-left text-sm text-coffee-500 hover:text-coffee-800 transition-colors py-1"
-                >
-                  <span className="text-coffee-400">{link.icon}</span>
-                  {link.label}
-                </button>
-              ))}
+              {/* Module shortcuts */}
+              <div className="mt-4 space-y-1.5">
+                {[
+                  { label: 'View roast sessions',    icon: <Flame size={13} />,       to: '/roast' },
+                  { label: 'Open cupping records',   icon: <FlaskConical size={13} />, to: '/cupping' },
+                  { label: 'Add new contact',        icon: <UserPlus size={13} />,    to: '/contacts/new' },
+                ].map(link => (
+                  <button
+                    key={link.to}
+                    onClick={() => navigate(link.to)}
+                    className="flex items-center gap-2 w-full text-left text-sm text-coffee-500 hover:text-coffee-800 transition-colors py-1"
+                  >
+                    <span className="text-coffee-400">{link.icon}</span>
+                    {link.label}
+                  </button>
+                ))}
 
-              <div className="pt-2 border-t border-coffee-100 space-y-1.5">
-                <button
-                  onClick={loadForecast}
-                  disabled={forecastLoading}
-                  className="flex items-center gap-2 w-full text-left text-sm text-coffee-500 hover:text-coffee-800 transition-colors py-1 disabled:opacity-50"
-                >
-                  <span className="text-coffee-400"><TrendingDown size={13} /></span>
-                  {forecastLoading ? 'Forecasting…' : 'AI: Stock depletion forecast'}
-                </button>
-                <button
-                  onClick={loadPatterns}
-                  disabled={patternsLoading}
-                  className="flex items-center gap-2 w-full text-left text-sm text-coffee-500 hover:text-coffee-800 transition-colors py-1 disabled:opacity-50"
-                >
-                  <span className="text-coffee-400"><BarChart2 size={13} /></span>
-                  {patternsLoading ? 'Analyzing…' : 'AI: Yield variance patterns'}
-                </button>
+                <div className="pt-2 border-t border-coffee-100 space-y-1.5">
+                  <button
+                    onClick={loadForecast}
+                    disabled={forecastLoading}
+                    className="flex items-center gap-2 w-full text-left text-sm text-coffee-500 hover:text-coffee-800 transition-colors py-1 disabled:opacity-50"
+                  >
+                    <span className="text-coffee-400"><TrendingDown size={13} /></span>
+                    {forecastLoading ? 'Forecasting…' : 'AI: Stock depletion forecast'}
+                  </button>
+                  <button
+                    onClick={loadPatterns}
+                    disabled={patternsLoading}
+                    className="flex items-center gap-2 w-full text-left text-sm text-coffee-500 hover:text-coffee-800 transition-colors py-1 disabled:opacity-50"
+                  >
+                    <span className="text-coffee-400"><BarChart2 size={13} /></span>
+                    {patternsLoading ? 'Analyzing…' : 'AI: Yield variance patterns'}
+                  </button>
+                </div>
               </div>
+            </div>
+
+            {/* Roaster USB Connection status */}
+            <div className="bg-white border border-coffee-200 rounded-xl p-5">
+              <p
+                className="text-xs text-coffee-400 uppercase tracking-wide mb-3"
+                style={{ letterSpacing: '0.08em' }}
+              >
+                Roaster Hardware
+              </p>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`w-2 h-2 rounded-full flex-shrink-0 ${hwStatus.connected ? 'animate-pulse' : ''}`}
+                    style={{ background: hwStatus.connected ? '#16A34A' : '#DC2626' }}
+                  />
+                  <span className="text-sm font-medium text-coffee-800">
+                    {hwStatus.connected ? 'Connected' : 'Offline'}
+                  </span>
+                </div>
+                <Button variant="secondary" size="sm" onClick={() => setShowHwModal(true)}>
+                  Configure
+                </Button>
+              </div>
+              {hwStatus.connected ? (
+                <p className="text-xs text-coffee-500 font-mono mt-2 truncate">
+                  Port: {hwStatus.portPath}
+                </p>
+              ) : (
+                <p className="text-xs text-coffee-500 mt-2">
+                  Running in simulated mock mode. Click Configure to scan COM ports.
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -468,6 +513,18 @@ export default function Dashboard() {
           </div>
         )}
         {patternsError && <p className="text-sm mt-3" style={{ color: '#A32D2D' }}>{patternsError}</p>}
+
+        {showHwModal && (
+          <HardwareConfigModal
+            onClose={() => setShowHwModal(false)}
+            onStatusChange={() => {
+              api.get('/hardware/status')
+                .then(r => r.json())
+                .then(setHwStatus)
+                .catch(() => {});
+            }}
+          />
+        )}
 
       </div>
     </Layout>

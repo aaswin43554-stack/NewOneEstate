@@ -184,4 +184,39 @@ function setupRoastWebSocket(server) {
   console.log('[server] WebSocket hardware service ready at /ws/roast-live');
 }
 
-module.exports = { setupRoastWebSocket };
+async function connectHardware(portPath) {
+  if (serial) {
+    await disconnectHardware();
+  }
+  const { SkywalkerSerial } = require('./roastHardwareSerial');
+  const dev = new SkywalkerSerial(portPath);
+  await dev.open();
+  serial = dev;
+  console.log(`[server] Skywalker V2 connected on ${portPath}`);
+  dev.on('disconnect', (err) => {
+    console.warn(`[server] Skywalker V2 disconnected from ${portPath} (${err.message})`);
+    serial = null;
+  });
+}
+
+async function disconnectHardware() {
+  if (serial) {
+    serial.close();
+    serial = null;
+    console.log('[server] Skywalker V2 disconnected');
+  }
+}
+
+function getHardwareStatus() {
+  return {
+    connected: serial && serial.connected ? true : false,
+    portPath: serial ? serial.portPath : null,
+  };
+}
+
+module.exports = {
+  setupRoastWebSocket,
+  connectHardware,
+  disconnectHardware,
+  getHardwareStatus
+};
