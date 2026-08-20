@@ -1,8 +1,15 @@
 'use strict';
 
 const EventEmitter = require('events');
-const { SerialPort } = require('serialport');
-const { ReadlineParser } = require('@serialport/parser-readline');
+
+let SerialPort = null;
+let ReadlineParser = null;
+try {
+  SerialPort = require('serialport').SerialPort;
+  ReadlineParser = require('@serialport/parser-readline').ReadlineParser;
+} catch (err) {
+  console.warn('[hardware] serialport module not available on this system host:', err.message);
+}
 
 const BAUD_RATE = 115200;
 const POLL_MS   = 2000;
@@ -21,6 +28,9 @@ class SkywalkerSerial extends EventEmitter {
 
   open() {
     return new Promise((resolve, reject) => {
+      if (!SerialPort || !ReadlineParser) {
+        return reject(new Error('SerialPort module is not available on this server host.'));
+      }
       const port = new SerialPort({ path: this.portPath, baudRate: BAUD_RATE, autoOpen: false });
 
       // TC4 / Skyduino protocol: ASCII lines, comma-separated
