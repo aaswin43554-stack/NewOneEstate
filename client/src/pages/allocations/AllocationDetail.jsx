@@ -5,6 +5,7 @@ import Layout from '../../components/Layout';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { Button, StatusBadge, ProcessBadge, FormInput } from '../../components/ui';
+import { downloadXlsx } from '../../lib/xlsx';
 
 const TZ = 'Asia/Vientiane';
 
@@ -74,7 +75,10 @@ export default function AllocationDetail() {
   const [transNotes,       setTransNotes]       = useState('');
   const [transSaving,      setTransSaving]      = useState(false);
   const [transError,       setTransError]       = useState('');
-  const [reqForm, setReqForm] = useState({ contact_id: '', quantity_bags: 1, notes: '' });
+  const [reqForm, setReqForm] = useState({
+    contact_id: '', quantity_bags: 1, notes: '',
+    cost: '', location: '', voucher_code: '', discount_rate: ''
+  });
   const [contacts,      setContacts]      = useState([]);
   const [reqOpen,       setReqOpen]       = useState(false);
   const [reqSaving,     setReqSaving]     = useState(false);
@@ -83,6 +87,31 @@ export default function AllocationDetail() {
   const [rowActioning,  setRowActioning]  = useState({});
   const [editingReq,    setEditingReq]    = useState(null);
   const [editReqSaving, setEditReqSaving] = useState(false);
+
+  // Auto-calculate location & cost when selecting contact or changing bags/discount in inline form
+  useEffect(() => {
+    if (!reqForm.contact_id) return;
+    const contact = contacts.find(c => c.id === reqForm.contact_id);
+    if (!contact) return;
+
+    setReqForm(p => ({ ...p, location: contact.location || p.location }));
+
+    const a = data?.allocation;
+    if (a?.planned_price_json) {
+      const priceMap = typeof a.planned_price_json === 'string'
+        ? JSON.parse(a.planned_price_json)
+        : a.planned_price_json;
+      const seg = contact.market_segment;
+      const price = seg && priceMap[seg] != null ? priceMap[seg] : null;
+      if (price != null) {
+        const bags = parseInt(reqForm.quantity_bags) || 0;
+        const discount = parseFloat(reqForm.discount_rate) || 0;
+        const total = price * bags;
+        const finalCost = total * (1 - discount / 100);
+        setReqForm(p => ({ ...p, cost: finalCost.toFixed(2) }));
+      }
+    }
+  }, [reqForm.contact_id, reqForm.quantity_bags, reqForm.discount_rate, contacts, data]);
 
   // Allocation edit modal
   const [editOpen,   setEditOpen]   = useState(false);
@@ -184,11 +213,18 @@ export default function AllocationDetail() {
         contact_id:    reqForm.contact_id,
         quantity_bags: bags,
         notes:         reqForm.notes || undefined,
+        cost:          reqForm.cost || undefined,
+        location:      reqForm.location || undefined,
+        voucher_code:  reqForm.voucher_code || undefined,
+        discount_rate: reqForm.discount_rate || undefined,
       });
       const d = await res.json().catch(() => ({}));
       if (res.ok) {
         setReqOpen(false);
-        setReqForm({ contact_id: '', quantity_bags: 1, notes: '' });
+        setReqForm({
+          contact_id: '', quantity_bags: 1, notes: '',
+          cost: '', location: '', voucher_code: '', discount_rate: ''
+        });
         load();
       } else { setReqError(d.error || 'Failed.'); }
     } catch {
@@ -218,7 +254,14 @@ export default function AllocationDetail() {
     const bags = parseInt(editingReq.quantity_bags);
     if (!bags || bags < 1) { setRowErrors(p => ({ ...p, [reqId]: 'Enter at least 1 bag.' })); setEditReqSaving(false); return; }
     try {
-      const res = await api.put(`/allocations/${id}/requests/${reqId}`, { quantity_bags: bags });
+      const res = await api.put(`/allocations/${id}/requests/${reqId}`, {
+        quantity_bags: bags,
+        channel: editingReq.channel,
+        location: editingReq.location,
+        voucher_code: editingReq.voucher_code,
+        discount_rate: editingReq.discount_rate === '' || editingReq.discount_rate === null ? null : parseFloat(editingReq.discount_rate),
+        cost: editingReq.cost === '' || editingReq.cost === null ? null : parseFloat(editingReq.cost),
+      });
       const d = await res.json().catch(() => ({}));
       if (res.ok) { setEditingReq(null); load(); }
       else { setRowErrors(p => ({ ...p, [reqId]: d.error })); }
@@ -559,6 +602,46 @@ export default function AllocationDetail() {
                     onChange={e => setReqForm(p => ({ ...p, notes: e.target.value }))}
                     className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg"
                   />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-coffee-500 mb-1">Location</label>
+                      <input
+                        value={reqForm.location}
+                        placeholder="e.g. London"
+                        onChange={e => setReqForm(p => ({ ...p, location: e.target.value }))}
+                        className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-coffee-500 mb-1">Voucher Code</label>
+                      <input
+                        value={reqForm.voucher_code}
+                        placeholder="Optional"
+                        onChange={e => setReqForm(p => ({ ...p, voucher_code: e.target.value }))}
+                        className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-coffee-500 mb-1">Discount Rate (%)</label>
+                      <input
+                        type="number" min={0} max={100} step="0.01"
+                        value={reqForm.discount_rate}
+                        placeholder="0.00"
+                        onChange={e => setReqForm(p => ({ ...p, discount_rate: e.target.value }))}
+                        className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-coffee-500 mb-1">Cost ($)</label>
+                      <input
+                        type="number" min={0} step="0.01"
+                        value={reqForm.cost}
+                        placeholder="0.00"
+                        onChange={e => setReqForm(p => ({ ...p, cost: e.target.value }))}
+                        className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg"
+                      />
+                    </div>
+                  </div>
                   {reqError && <p className="text-xs" style={{ color: '#A32D2D' }}>{reqError}</p>}
                   <div className="flex gap-2">
                     <Button type="submit" disabled={reqSaving || !reqForm.contact_id} size="sm">
@@ -593,90 +676,211 @@ export default function AllocationDetail() {
           {requests.length === 0 ? (
             <p className="text-sm text-coffee-300">No requests yet.</p>
           ) : (
-            <table className="w-full text-xs">
-              <thead>
-                <tr style={{ borderBottom: '1px solid #F2EAE0' }}>
-                  <th className="text-left py-2 text-coffee-400 uppercase tracking-wide">Contact</th>
-                  <th className="text-left py-2 text-coffee-400 uppercase tracking-wide">Channel</th>
-                  <th className="text-right py-2 text-coffee-400 uppercase tracking-wide">Bags</th>
-                  <th className="text-left py-2 pl-3 text-coffee-400 uppercase tracking-wide">Status</th>
-                  {isAdmin && !isClosed && <th />}
-                </tr>
-              </thead>
-              <tbody>
-                {requests.map(r => {
-                  const reqMeta = REQUEST_STATUS_MAP[r.status] || { cls: 'badge-draft', label: r.status };
-                  return (
-                    <tr key={r.id} style={{ borderBottom: '1px solid #F2EAE0' }}>
-                      <td className="py-2 text-coffee-700">{r.contact_name}</td>
-                      <td className="py-2">
-                        <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: '#F2EAE0', color: '#8B6A47' }}>
-                          {r.channel.replace('_', ' ')}
-                        </span>
-                      </td>
-                      <td className="py-2 text-right">
-                        {canEditRequest && !isClosed && editingReq?.id === r.id ? (
-                          <input
-                            type="number" min={1}
-                            value={editingReq.quantity_bags}
-                            onChange={e => setEditingReq(p => ({ ...p, quantity_bags: e.target.value }))}
-                            className="w-16 h-7 px-2 text-sm text-right border border-coffee-400 rounded-lg"
-                            autoFocus
-                          />
-                        ) : (
-                          <span className="text-coffee-900" style={{ fontWeight: 500 }}>{r.quantity_bags}</span>
-                        )}
-                      </td>
-                      <td className="py-2 pl-3">
-                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full capitalize ${reqMeta.cls}`}>
-                          {reqMeta.label}
-                        </span>
-                        {rowErrors[r.id] && (
-                          <p className="text-xs mt-0.5" style={{ color: '#A32D2D' }}>{rowErrors[r.id]}</p>
-                        )}
-                      </td>
-                      {isAdmin && !isClosed && (
-                        <td className="py-2 text-right whitespace-nowrap">
-                          <div className="flex items-center justify-end gap-3">
-                            {editingReq?.id === r.id ? (
-                              <>
-                                <button onClick={() => saveReqEdit(r.id)} disabled={editReqSaving} className="text-xs disabled:opacity-40" style={{ color: '#3B6D11' }}>
-                                  {editReqSaving ? '…' : 'Save'}
-                                </button>
-                                <button onClick={() => setEditingReq(null)} className="text-xs text-coffee-400">Cancel</button>
-                              </>
-                            ) : (
-                              <>
-                                {canEditRequest && (
-                                  <button onClick={() => setEditingReq({ id: r.id, quantity_bags: r.quantity_bags })} className="text-xs text-coffee-400 hover:text-coffee-700 transition-colors">
-                                    Edit
-                                  </button>
-                                )}
-                                {r.status === 'pending' && (
-                                  <button onClick={() => updateReqStatus(r.id, 'confirmed')} disabled={!!rowActioning[r.id]} className="text-xs transition-colors disabled:opacity-40" style={{ color: '#3B6D11' }}>
-                                    {rowActioning[r.id] ? '…' : 'Confirm'}
-                                  </button>
-                                )}
-                                {r.status === 'confirmed' && (
-                                  <button onClick={() => updateReqStatus(r.id, 'fulfilled')} disabled={!!rowActioning[r.id]} className="text-xs transition-colors disabled:opacity-40" style={{ color: '#185FA5' }}>
-                                    {rowActioning[r.id] ? '…' : 'Fulfil'}
-                                  </button>
-                                )}
-                                {canEditRequest && (
-                                  <button onClick={() => deleteReq(r.id)} disabled={!!rowActioning[r.id]} className="text-xs transition-colors disabled:opacity-40" style={{ color: '#A32D2D' }}>
-                                    Delete
-                                  </button>
-                                )}
-                              </>
-                            )}
-                          </div>
+            <>
+              <div className="flex justify-end gap-2 mb-2">
+                <button
+                  onClick={() => {
+                    const headers = ['Contact', 'Channel', 'Bags', 'Location', 'Voucher Code', 'Discount (%)', 'Cost ($)', 'Status'];
+                    const rows = requests.map(r => [
+                      r.contact_name,
+                      r.channel.replace('_', ' '),
+                      r.quantity_bags,
+                      r.location || '',
+                      r.voucher_code || '',
+                      r.discount_rate ?? '',
+                      r.cost ?? '',
+                      r.status,
+                    ]);
+                    const escape = v => {
+                      const s = String(v ?? '');
+                      return /[,"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+                    };
+                    const csv = [headers, ...rows].map(row => row.map(escape).join(',')).join('\n');
+                    const blob = new Blob([csv], { type: 'text/csv' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = `requests-${a.allocation_code}-${new Date().toISOString().split('T')[0]}.csv`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-coffee-300 text-coffee-600 hover:bg-coffee-50 transition-colors flex items-center gap-1"
+                >
+                  ↓ CSV
+                </button>
+                <button
+                  onClick={() => {
+                    const headers = ['Contact', 'Channel', 'Bags', 'Location', 'Voucher Code', 'Discount (%)', 'Cost ($)', 'Status'];
+                    const rows = requests.map(r => [
+                      r.contact_name,
+                      r.channel.replace('_', ' '),
+                      r.quantity_bags,
+                      r.location || '',
+                      r.voucher_code || '',
+                      r.discount_rate != null ? parseFloat(r.discount_rate) : '',
+                      r.cost != null ? parseFloat(r.cost) : '',
+                      r.status,
+                    ]);
+                    downloadXlsx(headers, rows, `requests-${a.allocation_code}-${new Date().toISOString().split('T')[0]}`);
+                  }}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-coffee-300 text-coffee-600 hover:bg-coffee-50 transition-colors flex items-center gap-1"
+                  style={{ background: '#F0F7E6', borderColor: '#B6D98A', color: '#3B6D11' }}
+                >
+                  ↓ Excel (.xlsx)
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #F2EAE0' }}>
+                    <th className="text-left py-2 text-coffee-400 uppercase tracking-wide">Contact</th>
+                    <th className="text-left py-2 text-coffee-400 uppercase tracking-wide">Channel</th>
+                    <th className="text-right py-2 text-coffee-400 uppercase tracking-wide">Bags</th>
+                    <th className="text-left py-2 pl-3 text-coffee-400 uppercase tracking-wide">Location</th>
+                    <th className="text-left py-2 pl-3 text-coffee-400 uppercase tracking-wide">Voucher</th>
+                    <th className="text-right py-2 text-coffee-400 uppercase tracking-wide">Disc %</th>
+                    <th className="text-right py-2 text-coffee-400 uppercase tracking-wide">Cost ($)</th>
+                    <th className="text-left py-2 pl-3 text-coffee-400 uppercase tracking-wide">Status</th>
+                    {isAdmin && !isClosed && <th />}
+                  </tr>
+                </thead>
+                <tbody>
+                  {requests.map(r => {
+                    const reqMeta = REQUEST_STATUS_MAP[r.status] || { cls: 'badge-draft', label: r.status };
+                    const isEditing = canEditRequest && !isClosed && editingReq?.id === r.id;
+                    return (
+                      <tr key={r.id} style={{ borderBottom: '1px solid #F2EAE0' }}>
+                        <td className="py-2 text-coffee-700">{r.contact_name}</td>
+                        <td className="py-2">
+                          <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: '#F2EAE0', color: '#8B6A47' }}>
+                            {r.channel.replace('_', ' ')}
+                          </span>
                         </td>
-                      )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        <td className="py-2 text-right">
+                          {isEditing ? (
+                            <input
+                              type="number" min={1}
+                              value={editingReq.quantity_bags}
+                              onChange={e => setEditingReq(p => ({ ...p, quantity_bags: e.target.value }))}
+                              className="w-16 h-7 px-2 text-sm text-right border border-coffee-400 rounded-lg"
+                              autoFocus
+                            />
+                          ) : (
+                            <span className="text-coffee-900" style={{ fontWeight: 500 }}>{r.quantity_bags}</span>
+                          )}
+                        </td>
+                        <td className="py-2 pl-3 text-coffee-600">
+                          {isEditing ? (
+                            <input
+                              value={editingReq.location || ''}
+                              onChange={e => setEditingReq(p => ({ ...p, location: e.target.value }))}
+                              placeholder="Location"
+                              className="w-24 h-7 px-2 text-xs border border-coffee-400 rounded-lg"
+                            />
+                          ) : (
+                            r.location || <span className="text-coffee-300">—</span>
+                          )}
+                        </td>
+                        <td className="py-2 pl-3 text-coffee-600">
+                          {isEditing ? (
+                            <input
+                              value={editingReq.voucher_code || ''}
+                              onChange={e => setEditingReq(p => ({ ...p, voucher_code: e.target.value }))}
+                              placeholder="Voucher"
+                              className="w-24 h-7 px-2 text-xs border border-coffee-400 rounded-lg"
+                            />
+                          ) : (
+                            r.voucher_code ? (
+                              <span className="px-1.5 py-0.5 rounded text-xs" style={{ background: '#EAF3DE', color: '#3B6D11' }}>
+                                {r.voucher_code}
+                              </span>
+                            ) : <span className="text-coffee-300">—</span>
+                          )}
+                        </td>
+                        <td className="py-2 text-right text-coffee-600">
+                          {isEditing ? (
+                            <input
+                              type="number" min={0} max={100} step="0.01"
+                              value={editingReq.discount_rate ?? ''}
+                              onChange={e => setEditingReq(p => ({ ...p, discount_rate: e.target.value }))}
+                              placeholder="0"
+                              className="w-16 h-7 px-2 text-xs text-right border border-coffee-400 rounded-lg"
+                            />
+                          ) : (
+                            r.discount_rate != null
+                              ? `${parseFloat(r.discount_rate).toFixed(1)}%`
+                              : <span className="text-coffee-300">—</span>
+                          )}
+                        </td>
+                        <td className="py-2 text-right text-coffee-700" style={{ fontWeight: 500 }}>
+                          {isEditing ? (
+                            <input
+                              type="number" min={0} step="0.01"
+                              value={editingReq.cost ?? ''}
+                              onChange={e => setEditingReq(p => ({ ...p, cost: e.target.value }))}
+                              placeholder="0.00"
+                              className="w-20 h-7 px-2 text-xs text-right border border-coffee-400 rounded-lg"
+                            />
+                          ) : (
+                            r.cost != null
+                              ? `$${parseFloat(r.cost).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                              : <span className="text-coffee-300">—</span>
+                          )}
+                        </td>
+                        <td className="py-2 pl-3">
+                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full capitalize ${reqMeta.cls}`}>
+                            {reqMeta.label}
+                          </span>
+                          {rowErrors[r.id] && (
+                            <p className="text-xs mt-0.5" style={{ color: '#A32D2D' }}>{rowErrors[r.id]}</p>
+                          )}
+                        </td>
+                        {isAdmin && !isClosed && (
+                          <td className="py-2 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-3">
+                              {editingReq?.id === r.id ? (
+                                <>
+                                  <button onClick={() => saveReqEdit(r.id)} disabled={editReqSaving} className="text-xs disabled:opacity-40" style={{ color: '#3B6D11' }}>
+                                    {editReqSaving ? '…' : 'Save'}
+                                  </button>
+                                  <button onClick={() => setEditingReq(null)} className="text-xs text-coffee-400">Cancel</button>
+                                </>
+                              ) : (
+                                <>
+                                  {canEditRequest && (
+                                    <button onClick={() => setEditingReq({ id: r.id, quantity_bags: r.quantity_bags, channel: r.channel, location: r.location || '', voucher_code: r.voucher_code || '', discount_rate: r.discount_rate ?? '', cost: r.cost ?? '' })} className="text-xs text-coffee-400 hover:text-coffee-700 transition-colors">
+                                      Edit
+                                    </button>
+                                  )}
+                                  {r.status === 'pending' && (
+                                    <button onClick={() => updateReqStatus(r.id, 'confirmed')} disabled={!!rowActioning[r.id]} className="text-xs transition-colors disabled:opacity-40" style={{ color: '#3B6D11' }}>
+                                      {rowActioning[r.id] ? '…' : 'Confirm'}
+                                    </button>
+                                  )}
+                                  {r.status === 'confirmed' && (
+                                    <button onClick={() => updateReqStatus(r.id, 'fulfilled')} disabled={!!rowActioning[r.id]} className="text-xs transition-colors disabled:opacity-40" style={{ color: '#185FA5' }}>
+                                      {rowActioning[r.id] ? '…' : 'Fulfil'}
+                                    </button>
+                                  )}
+                                  {canEditRequest && (
+                                    <button onClick={() => deleteReq(r.id)} disabled={!!rowActioning[r.id]} className="text-xs transition-colors disabled:opacity-40" style={{ color: '#A32D2D' }}>
+                                      Delete
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              </div>
+            </>
           )}
         </div>
 

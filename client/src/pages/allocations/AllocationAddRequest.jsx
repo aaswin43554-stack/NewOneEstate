@@ -11,6 +11,7 @@ export default function AllocationAddRequest() {
 
   const [form, setForm] = useState({
     contact_name: '', contact_method: '', channel: '', quantity_bags: 1, notes: '',
+    cost: '', location: '', voucher_code: '', discount_rate: '',
   });
   const [saving,   setSaving]   = useState(false);
   const [error,    setError]    = useState('');
@@ -40,6 +41,7 @@ export default function AllocationAddRequest() {
       ...p,
       contact_name:   contact.name,
       contact_method: contact.primary_contact_method || p.contact_method,
+      location:       contact.location || p.location,
     }));
     setContactSearch(contact.name);
     setShowSuggestions(false);
@@ -48,7 +50,7 @@ export default function AllocationAddRequest() {
   function clearContact() {
     setSelectedContact(null);
     setContactSearch('');
-    setForm(p => ({ ...p, contact_name: '', contact_method: '' }));
+    setForm(p => ({ ...p, contact_name: '', contact_method: '', location: '', cost: '' }));
   }
 
   // Look up price per bag for the selected contact's market segment
@@ -60,6 +62,24 @@ export default function AllocationAddRequest() {
     const seg = selectedContact.market_segment;
     return seg && priceMap[seg] != null ? { segment: seg, price: priceMap[seg] } : null;
   }, [selectedContact, allocation]);
+
+  // Auto-fill location & cost when selecting contact or changing bags/discount
+  useEffect(() => {
+    if (selectedContact) {
+      setForm(p => ({ ...p, location: selectedContact.location || p.location }));
+    }
+  }, [selectedContact]);
+
+  useEffect(() => {
+    if (priceForContact) {
+      const price = priceForContact.price;
+      const bags = form.quantity_bags || 0;
+      const discount = parseFloat(form.discount_rate) || 0;
+      const total = price * bags;
+      const finalCost = total * (1 - discount / 100);
+      setForm(p => ({ ...p, cost: finalCost.toFixed(2) }));
+    }
+  }, [priceForContact, form.quantity_bags, form.discount_rate]);
 
   function set(key, val) { setForm(p => ({ ...p, [key]: val })); }
 
@@ -82,7 +102,10 @@ export default function AllocationAddRequest() {
   }
 
   function reset() {
-    setForm({ contact_name:'', contact_method:'', channel:'', quantity_bags:1, notes:'' });
+    setForm({
+      contact_name:'', contact_method:'', channel:'', quantity_bags:1, notes:'',
+      cost:'', location:'', voucher_code:'', discount_rate:''
+    });
     setSuccess(null);
     setError('');
     setSelectedContact(null);
@@ -232,6 +255,42 @@ export default function AllocationAddRequest() {
               Total: <strong className="text-coffee-800">${(priceForContact.price * form.quantity_bags).toLocaleString()}</strong>
             </p>
           )}
+        </div>
+
+        {/* Location */}
+        <div>
+          <label className="block text-base font-semibold text-coffee-800 mb-2">Location</label>
+          <input value={form.location}
+            onChange={e => set('location', e.target.value)}
+            placeholder="e.g. London"
+            className="w-full text-lg border-2 border-coffee-300 rounded-xl px-4 py-4 focus:border-coffee-600 outline-none" />
+        </div>
+
+        {/* Voucher Code */}
+        <div>
+          <label className="block text-base font-semibold text-coffee-800 mb-2">Voucher Code</label>
+          <input value={form.voucher_code}
+            onChange={e => set('voucher_code', e.target.value)}
+            placeholder="Voucher"
+            className="w-full text-lg border-2 border-coffee-300 rounded-xl px-4 py-4 focus:border-coffee-600 outline-none" />
+        </div>
+
+        {/* Discount Rate */}
+        <div>
+          <label className="block text-base font-semibold text-coffee-800 mb-2">Discount Rate (%)</label>
+          <input type="number" min={0} max={100} step="0.01" value={form.discount_rate}
+            onChange={e => set('discount_rate', e.target.value)}
+            placeholder="0.00"
+            className="w-full text-lg border-2 border-coffee-300 rounded-xl px-4 py-4 focus:border-coffee-600 outline-none" />
+        </div>
+
+        {/* Cost */}
+        <div>
+          <label className="block text-base font-semibold text-coffee-800 mb-2">Cost ($)</label>
+          <input type="number" min={0} step="0.01" value={form.cost}
+            onChange={e => set('cost', e.target.value)}
+            placeholder="0.00"
+            className="w-full text-lg border-2 border-coffee-300 rounded-xl px-4 py-4 focus:border-coffee-600 outline-none" />
         </div>
 
         {error && <p className="text-red-600 text-sm">{error}</p>}

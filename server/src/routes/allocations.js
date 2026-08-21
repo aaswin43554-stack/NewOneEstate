@@ -571,7 +571,7 @@ router.post('/:id/requests', requireRole('admin', 'roaster'), async (req, res) =
     });
   }
 
-  let { contact_id, contact_name, contact_method, channel, quantity_bags, notes } = req.body;
+  let { contact_id, contact_name, contact_method, channel, quantity_bags, notes, cost, location, voucher_code, discount_rate } = req.body;
 
   // Preferred flow: a contact is pulled from the Contacts list. Derive the
   // name / method / channel from that record so they are always consistent.
@@ -584,6 +584,9 @@ router.post('/:id/requests', requireRole('admin', 'roaster'), async (req, res) =
     contact_name   = contact.name;
     contact_method = contact.primary_contact_method || contact_method || '—';
     channel        = normalizeChannel(contact.preferred_channel) || channel || 'Other';
+    if (location === undefined || location === null || location === '') {
+      location = contact.location || null;
+    }
   }
 
   // Validate the bag count up-front. A non-integer or out-of-range value (e.g. a
@@ -604,9 +607,22 @@ router.post('/:id/requests', requireRole('admin', 'roaster'), async (req, res) =
     await client.query('BEGIN');
     const { rows: [request] } = await client.query(
       `INSERT INTO oec_allocation_requests
-         (tenant_id, allocation_id, contact_name, contact_method, channel, quantity_bags, notes, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8) RETURNING *`,
-      [tenant_id, alloc.id, contact_name, contact_method, channel, bags, notes || null, req.user.id]
+         (tenant_id, allocation_id, contact_name, contact_method, channel, quantity_bags, notes, cost, location, voucher_code, discount_rate, created_by, updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12) RETURNING *`,
+      [
+        tenant_id,
+        alloc.id,
+        contact_name,
+        contact_method,
+        channel,
+        bags,
+        notes || null,
+        cost !== undefined && cost !== '' ? Number(cost) : null,
+        location || null,
+        voucher_code || null,
+        discount_rate !== undefined && discount_rate !== '' ? Number(discount_rate) : null,
+        req.user.id
+      ]
     );
     // Link the request back to the contact so it shows in their purchase history.
     if (contact_id) {
@@ -640,9 +656,9 @@ router.put('/:id/requests/:req_id', requireRole('admin', 'roaster'), async (req,
   );
   if (!request) return res.status(404).json({ error: 'Request not found.' });
 
-  const { status: newStatus, quantity_bags, contact_name, channel, notes } = req.body;
+  const { status: newStatus, quantity_bags, contact_name, channel, notes, cost, location, voucher_code, discount_rate } = req.body;
 
-  if (!newStatus && (quantity_bags !== undefined || contact_name !== undefined || channel !== undefined || notes !== undefined)) {
+  if (!newStatus && (quantity_bags !== undefined || contact_name !== undefined || channel !== undefined || notes !== undefined || cost !== undefined || location !== undefined || voucher_code !== undefined || discount_rate !== undefined)) {
     if (req.user.role !== 'admin') return res.status(403).json({ error: 'Only admins can edit request fields.' });
     const updates = [];
     const params  = [];
@@ -654,6 +670,10 @@ router.put('/:id/requests/:req_id', requireRole('admin', 'roaster'), async (req,
     if (contact_name  !== undefined) { params.push(contact_name);            updates.push(`contact_name = $${params.length}`);  }
     if (channel       !== undefined) { params.push(channel);                 updates.push(`channel = $${params.length}`);       }
     if (notes         !== undefined) { params.push(notes || null);           updates.push(`notes = $${params.length}`);         }
+    if (cost          !== undefined) { params.push(cost === '' || cost === null ? null : Number(cost)); updates.push(`cost = $${params.length}`); }
+    if (location      !== undefined) { params.push(location || null);         updates.push(`location = $${params.length}`);      }
+    if (voucher_code  !== undefined) { params.push(voucher_code || null);     updates.push(`voucher_code = $${params.length}`);  }
+    if (discount_rate !== undefined) { params.push(discount_rate === '' || discount_rate === null ? null : Number(discount_rate)); updates.push(`discount_rate = $${params.length}`); }
     params.push(req.user.id); updates.push(`updated_by = $${params.length}`, 'updated_at = NOW()');
     params.push(request.id);
     try {

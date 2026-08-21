@@ -1,0 +1,5 @@
+ALTER TABLE ops.oec_allocation_requests
+  ADD COLUMN IF NOT EXISTS cost NUMERIC(10, 2),
+  ADD COLUMN IF NOT EXISTS location VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS voucher_code VARCHAR(50),
+  ADD COLUMN IF NOT EXISTS discount_rate NUMERIC(5, 2);
