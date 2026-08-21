@@ -706,6 +706,81 @@ router.put('/:id/requests/:req_id', requireRole('admin', 'roaster'), async (req,
   }
 });
 
+// GET /api/allocations/:id/requests/export  — download all requests as CSV
+// IMPORTANT: must be declared BEFORE /:id/requests/:req_id so Express matches
+// the literal "export" segment before it matches it as a :req_id parameter.
+router.get('/:id/requests/export', requireRole('admin', 'roaster'), async (req, res) => {
+  const tenant_id = req.user.tenant_id;
+  const alloc = await fetchAllocation(req.params.id, tenant_id);
+  if (!alloc) return res.status(404).json({ error: 'Allocation not found.' });
+
+  try {
+    // Fetch requests and join contact link to get market_segment for cost calc.
+    const { rows: requests } = await pool.query(
+      `SELECT r.*,
+              c.market_segment,
+              c.location AS contact_location
+       FROM oec_allocation_requests r
+       LEFT JOIN oec_contact_request_links lnk ON lnk.allocation_request_id = r.id
+       LEFT JOIN oec_contacts c ON c.id = lnk.contact_id
+       WHERE r.allocation_id = $1
+       ORDER BY r.requested_at ASC`,
+      [alloc.id]
+    );
+
+    // Parse price map once
+    let priceMap = {};
+    try {
+      priceMap = typeof alloc.planned_price_json === 'string'
+        ? JSON.parse(alloc.planned_price_json)
+        : (alloc.planned_price_json || {});
+    } catch { priceMap = {}; }
+
+    // CSV helpers
+    function esc(v) {
+      if (v == null) return '';
+      const s = String(v);
+      return s.includes(',') || s.includes('"') || s.includes('\n')
+        ? `"${s.replace(/"/g, '""')}"`
+        : s;
+    }
+
+    const headers = ['Contact', 'Channel', 'Location', 'Bags', 'Price/Bag ($)', 'Discount (%)', 'Voucher Code', 'Cost ($)', 'Status', 'Notes', 'Requested At'];
+    const rows = requests.map(r => {
+      const seg         = r.market_segment;
+      const pricePerBag = seg && priceMap[seg] != null ? Number(priceMap[seg]) : null;
+      const discount    = r.discount_rate != null ? Number(r.discount_rate) : 0;
+      const cost        = pricePerBag != null
+        ? (r.quantity_bags * pricePerBag * (1 - discount / 100)).toFixed(2)
+        : '';
+      const location    = r.location || r.contact_location || '';
+      return [
+        esc(r.contact_name),
+        esc(r.channel.replace('_', ' ')),
+        esc(location),
+        esc(r.quantity_bags),
+        esc(pricePerBag != null ? pricePerBag.toFixed(2) : ''),
+        esc(discount > 0 ? discount.toFixed(2) : '0'),
+        esc(r.voucher_code || ''),
+        esc(cost),
+        esc(r.status),
+        esc(r.notes || ''),
+        esc(r.requested_at ? new Date(r.requested_at).toISOString().replace('T', ' ').slice(0, 16) : ''),
+      ].join(',');
+    });
+
+    const csv = [headers.join(','), ...rows].join('\r\n');
+    const filename = `requests_${alloc.allocation_code}_${new Date().toISOString().slice(0,10)}.csv`;
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return res.send('\uFEFF' + csv); // BOM so Excel opens with correct UTF-8 encoding
+  } catch (err) {
+    console.error('Export requests CSV:', err);
+    return res.status(500).json({ error: 'Failed to export requests.' });
+  }
+});
+
 // DELETE /api/allocations/:id/requests/:req_id
 router.delete('/:id/requests/:req_id', requireRole('admin'), async (req, res) => {
   const tenant_id = req.user.tenant_id;
