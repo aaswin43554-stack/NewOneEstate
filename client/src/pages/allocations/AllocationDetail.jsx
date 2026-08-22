@@ -102,8 +102,26 @@ export default function AllocationDetail() {
         ? JSON.parse(a.planned_price_json)
         : a.planned_price_json;
       const seg = contact.market_segment;
-      const price = seg && priceMap[seg] != null ? priceMap[seg] : null;
-      if (price != null) {
+      let rawPrice = null;
+      if (seg && priceMap[seg] != null) {
+        rawPrice = priceMap[seg];
+      } else if (seg) {
+        const aliases = {
+          'Singapore': ['SGD', 'Singapore', 'Other: International', 'Other'],
+          'Thailand':  ['THB', 'Thailand'],
+          'Laos':      ['LAK', 'THB', 'Laos'],
+          'Malaysia':  ['MYR', 'Malaysia', 'SGD', 'Other: International', 'Other'],
+          'Other':     ['USD', 'Other', 'Other: International'],
+        };
+        for (const k of (aliases[seg] || [])) {
+          if (priceMap[k] != null) { rawPrice = priceMap[k]; break; }
+        }
+      }
+      if (rawPrice == null && Object.keys(priceMap).length === 1) {
+        rawPrice = priceMap[Object.keys(priceMap)[0]];
+      }
+      const price = typeof rawPrice === 'object' && rawPrice?.amount != null ? rawPrice.amount : (rawPrice != null ? Number(rawPrice) : null);
+      if (price != null && !isNaN(price)) {
         const bags = parseInt(reqForm.quantity_bags) || 0;
         const discount = parseFloat(reqForm.discount_rate) || 0;
         const total = price * bags;
@@ -685,7 +703,7 @@ export default function AllocationDetail() {
                       r.contact_name,
                       r.channel.replace('_', ' '),
                       r.quantity_bags,
-                      r.location || '',
+                      r.location || r.contact_location || '',
                       r.voucher_code || '',
                       r.discount_rate ?? '',
                       r.cost ?? '',
@@ -717,7 +735,7 @@ export default function AllocationDetail() {
                       r.contact_name,
                       r.channel.replace('_', ' '),
                       r.quantity_bags,
-                      r.location || '',
+                      r.location || r.contact_location || '',
                       r.voucher_code || '',
                       r.discount_rate != null ? parseFloat(r.discount_rate) : '',
                       r.cost != null ? parseFloat(r.cost) : '',
@@ -850,7 +868,7 @@ export default function AllocationDetail() {
                               ) : (
                                 <>
                                   {canEditRequest && (
-                                    <button onClick={() => setEditingReq({ id: r.id, quantity_bags: r.quantity_bags, channel: r.channel, location: r.location || '', voucher_code: r.voucher_code || '', discount_rate: r.discount_rate ?? '', cost: r.cost ?? '' })} className="text-xs text-coffee-400 hover:text-coffee-700 transition-colors">
+                                    <button onClick={() => setEditingReq({ id: r.id, quantity_bags: r.quantity_bags, channel: r.channel, location: r.location || r.contact_location || '', voucher_code: r.voucher_code || '', discount_rate: r.discount_rate ?? '', cost: r.cost ?? '' })} className="text-xs text-coffee-400 hover:text-coffee-700 transition-colors">
                                       Edit
                                     </button>
                                   )}

@@ -60,7 +60,35 @@ export default function AllocationAddRequest() {
       ? JSON.parse(allocation.planned_price_json)
       : allocation.planned_price_json;
     const seg = selectedContact.market_segment;
-    return seg && priceMap[seg] != null ? { segment: seg, price: priceMap[seg] } : null;
+    
+    let price = null;
+    if (seg && priceMap[seg] != null) {
+      const val = priceMap[seg];
+      price = typeof val === 'object' && val.amount != null ? val.amount : Number(val);
+    } else if (seg) {
+      const aliases = {
+        'Singapore': ['SGD', 'Singapore', 'Other: International', 'Other'],
+        'Thailand':  ['THB', 'Thailand'],
+        'Laos':      ['LAK', 'THB', 'Laos'],
+        'Malaysia':  ['MYR', 'Malaysia', 'SGD', 'Other: International', 'Other'],
+        'Other':     ['USD', 'Other', 'Other: International'],
+      };
+      const candKeys = aliases[seg] || [];
+      for (const k of candKeys) {
+        if (priceMap[k] != null) {
+          const val = priceMap[k];
+          price = typeof val === 'object' && val.amount != null ? val.amount : Number(val);
+          break;
+        }
+      }
+    }
+    
+    if (price == null && Object.keys(priceMap).length === 1) {
+      const val = priceMap[Object.keys(priceMap)[0]];
+      price = typeof val === 'object' && val.amount != null ? val.amount : Number(val);
+    }
+
+    return price != null && !isNaN(price) ? { segment: seg || 'Standard', price } : null;
   }, [selectedContact, allocation]);
 
   // Auto-fill location & cost when selecting contact or changing bags/discount

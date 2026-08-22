@@ -116,13 +116,15 @@ router.get('/:id', async (req, res) => {
 
     const { rows: history } = await pool.query(
       `SELECT ar.id, ar.allocation_id, ar.quantity_bags, ar.status, ar.created_at,
+              ar.location, ar.voucher_code, ar.discount_rate, ar.cost,
               a.allocation_code, a.process, a.harvest_year
-       FROM oec_contact_request_links crl
-       JOIN oec_allocation_requests ar ON ar.id  = crl.allocation_request_id
-       JOIN oec_allocations a          ON a.id   = ar.allocation_id
-       WHERE crl.contact_id = $1
+       FROM oec_allocation_requests ar
+       JOIN oec_allocations a ON a.id = ar.allocation_id
+       LEFT JOIN oec_contact_request_links crl ON crl.allocation_request_id = ar.id
+       WHERE (crl.contact_id = $1 OR (crl.contact_id IS NULL AND LOWER(TRIM(ar.contact_name)) = LOWER(TRIM($2))))
+         AND ar.tenant_id = $3
        ORDER BY ar.created_at DESC`,
-      [contact.id]
+      [contact.id, contact.name, tenant_id]
     );
 
     const totalAllocs = new Set(history.map(h => h.allocation_id)).size;

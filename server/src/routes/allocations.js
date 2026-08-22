@@ -31,6 +31,70 @@ function normalizeChannel(raw) {
   return ALLOWED_CHANNELS.find(c => c.toLowerCase().replace(/[\s_]+/g, '') === key) || null;
 }
 
+// Safely resolve price per bag from planned_price_json for a given market segment or currency
+function getPriceForSegment(segment, pMap) {
+  if (!pMap || typeof pMap !== 'object') return null;
+  if (typeof pMap === 'number') return pMap;
+
+  // Direct match by segment name
+  if (segment && pMap[segment] != null) {
+    const val = pMap[segment];
+    if (typeof val === 'number') return val;
+    if (typeof val === 'object' && val.amount != null) return Number(val.amount);
+    if (!isNaN(Number(val))) return Number(val);
+  }
+
+  // Segment to currency / region aliases
+  const aliases = {
+    'Singapore': ['SGD', 'Singapore', 'Other: International', 'Other'],
+    'Thailand':  ['THB', 'Thailand'],
+    'Laos':      ['LAK', 'THB', 'Laos'],
+    'Malaysia':  ['MYR', 'Malaysia', 'SGD', 'Other: International', 'Other'],
+    'Other':     ['USD', 'Other', 'Other: International'],
+  };
+
+  const candKeys = (segment && aliases[segment]) || [];
+  for (const k of candKeys) {
+    if (pMap[k] != null) {
+      const val = pMap[k];
+      if (typeof val === 'number') return val;
+      if (typeof val === 'object' && val.amount != null) return Number(val.amount);
+      if (!isNaN(Number(val))) return Number(val);
+    }
+  }
+
+  // Single price entry fallback
+  const keys = Object.keys(pMap);
+  if (keys.length === 1) {
+    const val = pMap[keys[0]];
+    if (typeof val === 'number') return val;
+    if (typeof val === 'object' && val.amount != null) return Number(val.amount);
+    if (!isNaN(Number(val))) return Number(val);
+  }
+
+  return null;
+}
+
+// Extract voucher code or discount rate from notes only if unambiguous
+function extractVoucherAndDiscount(reqNotes, contactNotes) {
+  let voucher = null;
+  let discount = null;
+  const combined = [reqNotes, contactNotes].filter(Boolean).join(' ');
+  if (!combined) return { voucher, discount };
+
+  const vMatch = combined.match(/(?:voucher(?:[\s_]?code)?|code)[:\s]+([A-Za-z0-9_-]+)/i);
+  if (vMatch && vMatch[1]) {
+    voucher = vMatch[1].trim();
+  }
+
+  const dMatch = combined.match(/(?:discount(?:[\s_]?rate)?[:\s]+)?(\d+(?:\.\d+)?)\s*%\s*(?:discount|off)?/i);
+  if (dMatch && dMatch[1]) {
+    discount = parseFloat(dMatch[1]);
+  }
+
+  return { voucher, discount };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/allocations/sync-from-admin  (NO JWT — uses webhook secret auth)
 // Must be declared BEFORE router.use(requireAuth) so JWT check is bypassed.
@@ -573,6 +637,26 @@ router.post('/:id/requests', requireRole('admin', 'roaster'), async (req, res) =
 
   let { contact_id, contact_name, contact_method, channel, quantity_bags, notes, cost, location, voucher_code, discount_rate } = req.body;
 
+  // If contact_id not passed, match existing contact by name if available
+  if (!contact_id && contact_name) {
+    const { rows: [matchedContact] } = await pool.query(
+      'SELECT * FROM oec_contacts WHERE tenant_id = $1 AND LOWER(TRIM(name)) = LOWER(TRIM($2)) AND deleted_at IS NULL LIMIT 1',
+      [tenant_id, contact_name]
+    );
+    if (matchedContact) {
+      contact_id = matchedContact.id;
+      if (!contact_method || contact_method === '—') {
+        contact_method = matchedContact.primary_contact_method || '—';
+      }
+      if (!channel || channel === 'Other') {
+        channel = normalizeChannel(matchedContact.preferred_channel) || channel || 'Other';
+      }
+      if (location === undefined || location === null || location === '') {
+        location = matchedContact.location || null;
+      }
+    }
+  }
+
   // Preferred flow: a contact is pulled from the Contacts list. Derive the
   // name / method / channel from that record so they are always consistent.
   if (contact_id) {
@@ -595,6 +679,25 @@ router.post('/:id/requests', requireRole('admin', 'roaster'), async (req, res) =
   const bags = Number(quantity_bags);
   if (!Number.isInteger(bags) || bags < 1 || bags > 1000000) {
     return res.status(400).json({ error: 'Number of bags must be a whole number between 1 and 1,000,000.' });
+  }
+
+  // Auto-calculate cost if not explicitly provided and pricing is known
+  if ((cost === undefined || cost === null || cost === '') && contact_id) {
+    const { rows: [contactRow] } = await pool.query(
+      'SELECT market_segment FROM oec_contacts WHERE id = $1',
+      [contact_id]
+    );
+    let priceMap = {};
+    try {
+      priceMap = typeof alloc.planned_price_json === 'string'
+        ? JSON.parse(alloc.planned_price_json)
+        : (alloc.planned_price_json || {});
+    } catch { priceMap = {}; }
+    const p = getPriceForSegment(contactRow?.market_segment, priceMap);
+    if (p != null) {
+      const disc = discount_rate !== undefined && discount_rate !== '' ? Number(discount_rate) : 0;
+      cost = Number((bags * p * (1 - disc / 100)).toFixed(2));
+    }
   }
 
   if (!contact_name || !contact_method || !channel) {
@@ -715,14 +818,18 @@ router.get('/:id/requests/export', requireRole('admin', 'roaster'), async (req, 
   if (!alloc) return res.status(404).json({ error: 'Allocation not found.' });
 
   try {
-    // Fetch requests and join contact link to get market_segment for cost calc.
-    const { rows: requests } = await pool.query(
+    // Fetch requests and join contact link / name to get market_segment and location
+    const { rows: rawRequests } = await pool.query(
       `SELECT r.*,
               c.market_segment,
-              c.location AS contact_location
+              c.location AS contact_location,
+              c.personal_notes AS contact_personal_notes
        FROM oec_allocation_requests r
        LEFT JOIN oec_contact_request_links lnk ON lnk.allocation_request_id = r.id
-       LEFT JOIN oec_contacts c ON c.id = lnk.contact_id
+       LEFT JOIN oec_contacts c ON (
+         c.id = lnk.contact_id 
+         OR (lnk.contact_id IS NULL AND c.tenant_id = r.tenant_id AND LOWER(TRIM(c.name)) = LOWER(TRIM(r.contact_name)) AND c.deleted_at IS NULL)
+       )
        WHERE r.allocation_id = $1
        ORDER BY r.requested_at ASC`,
       [alloc.id]
@@ -746,14 +853,19 @@ router.get('/:id/requests/export', requireRole('admin', 'roaster'), async (req, 
     }
 
     const headers = ['Contact', 'Channel', 'Location', 'Bags', 'Price/Bag ($)', 'Discount (%)', 'Voucher Code', 'Cost ($)', 'Status', 'Notes', 'Requested At'];
-    const rows = requests.map(r => {
-      const seg         = r.market_segment;
-      const pricePerBag = seg && priceMap[seg] != null ? Number(priceMap[seg]) : null;
-      const discount    = r.discount_rate != null ? Number(r.discount_rate) : 0;
-      const cost        = pricePerBag != null
-        ? (r.quantity_bags * pricePerBag * (1 - discount / 100)).toFixed(2)
-        : '';
-      const location    = r.location || r.contact_location || '';
+    const rows = rawRequests.map(r => {
+      const seg = r.market_segment;
+      const pricePerBag = getPriceForSegment(seg, priceMap);
+      const extracted = extractVoucherAndDiscount(r.notes, r.contact_personal_notes);
+      const discount = r.discount_rate != null ? Number(r.discount_rate) : (extracted.discount != null ? extracted.discount : 0);
+      const voucher = r.voucher_code || extracted.voucher || '';
+      const location = r.location || r.contact_location || '';
+      
+      let cost = r.cost != null ? Number(r.cost) : null;
+      if (cost == null && pricePerBag != null && r.quantity_bags) {
+        cost = Number((r.quantity_bags * pricePerBag * (1 - discount / 100)).toFixed(2));
+      }
+
       return [
         esc(r.contact_name),
         esc(r.channel.replace('_', ' ')),
@@ -761,8 +873,8 @@ router.get('/:id/requests/export', requireRole('admin', 'roaster'), async (req, 
         esc(r.quantity_bags),
         esc(pricePerBag != null ? pricePerBag.toFixed(2) : ''),
         esc(discount > 0 ? discount.toFixed(2) : '0'),
-        esc(r.voucher_code || ''),
-        esc(cost),
+        esc(voucher),
+        esc(cost != null ? cost.toFixed(2) : ''),
         esc(r.status),
         esc(r.notes || ''),
         esc(r.requested_at ? new Date(r.requested_at).toISOString().replace('T', ' ').slice(0, 16) : ''),
@@ -899,14 +1011,27 @@ router.get('/:id', async (req, res) => {
   if (!alloc) return res.status(404).json({ error: 'Allocation not found.' });
 
   const [
-    { rows: requests },
+    { rows: rawRequests },
     { rows: stateLogs },
     { rows: sessions },
     { rows: [lotRow] },
     { rows: allocLots },
   ] = await Promise.all([
     pool.query(
-      'SELECT * FROM oec_allocation_requests WHERE allocation_id = $1 ORDER BY requested_at ASC',
+      `SELECT r.*,
+              COALESCE(c.id, lnk.contact_id) AS contact_id,
+              c.location AS contact_location,
+              c.market_segment,
+              c.preferred_channel AS contact_preferred_channel,
+              c.personal_notes AS contact_personal_notes
+       FROM oec_allocation_requests r
+       LEFT JOIN oec_contact_request_links lnk ON lnk.allocation_request_id = r.id
+       LEFT JOIN oec_contacts c ON (
+         c.id = lnk.contact_id 
+         OR (lnk.contact_id IS NULL AND c.tenant_id = r.tenant_id AND LOWER(TRIM(c.name)) = LOWER(TRIM(r.contact_name)) AND c.deleted_at IS NULL)
+       )
+       WHERE r.allocation_id = $1
+       ORDER BY r.requested_at ASC`,
       [alloc.id]
     ),
     pool.query(
@@ -936,6 +1061,39 @@ router.get('/:id', async (req, res) => {
       [alloc.id]
     ),
   ]);
+
+  let priceMap = {};
+  try {
+    priceMap = typeof alloc.planned_price_json === 'string'
+      ? JSON.parse(alloc.planned_price_json)
+      : (alloc.planned_price_json || {});
+  } catch { priceMap = {}; }
+
+  const requests = rawRequests.map(r => {
+    const effectiveLocation = r.location || r.contact_location || null;
+    const extracted = extractVoucherAndDiscount(r.notes, r.contact_personal_notes);
+    const effectiveVoucher = r.voucher_code || extracted.voucher || null;
+    const effectiveDiscount = r.discount_rate != null ? Number(r.discount_rate) : (extracted.discount != null ? extracted.discount : null);
+
+    let effectiveCost = r.cost != null ? Number(r.cost) : null;
+    if (effectiveCost == null) {
+      const seg = r.market_segment;
+      const pricePerBag = getPriceForSegment(seg, priceMap);
+      if (pricePerBag != null && r.quantity_bags) {
+        const disc = effectiveDiscount != null ? effectiveDiscount : 0;
+        effectiveCost = Number((r.quantity_bags * pricePerBag * (1 - disc / 100)).toFixed(2));
+      }
+    }
+
+    return {
+      ...r,
+      location: effectiveLocation,
+      contact_location: r.contact_location || null,
+      voucher_code: effectiveVoucher,
+      discount_rate: effectiveDiscount,
+      cost: effectiveCost != null ? effectiveCost : null,
+    };
+  });
 
   const { rows: [aggRow] } = await pool.query(
     `SELECT COALESCE(SUM(CASE WHEN status='confirmed' THEN quantity_bags ELSE 0 END),0)::int AS confirmed_bags
