@@ -124,14 +124,21 @@ export default function AllocationDetail() {
         : a.planned_price_json;
       const seg = contact.market_segment;
       let rawPrice = null;
-      let resolvedCurr = seg === 'Laos' ? 'LAK' : (seg === 'Thailand' ? 'THB' : 'USD');
+      // Derive default currency from segment name (before looking up keys)
+      let resolvedCurr = seg === 'Laos' ? 'LAK'
+        : seg === 'Thailand' ? 'THB'
+        : seg === 'Singapore' ? 'SGD'
+        : seg === 'Malaysia' ? 'MYR'
+        : null;
+
       if (seg && priceMap[seg] != null) {
         rawPrice = priceMap[seg];
+        // key is a segment name like "Laos" — resolvedCurr already set above
       } else if (seg) {
         const aliases = {
-          'Singapore': ['SGD', 'Singapore', 'Other: International', 'Other'],
+          'Laos':      ['LAK', 'Laos'],
           'Thailand':  ['THB', 'Thailand'],
-          'Laos':      ['LAK', 'THB', 'Laos'],
+          'Singapore': ['SGD', 'Singapore', 'Other: International', 'Other'],
           'Malaysia':  ['MYR', 'Malaysia', 'SGD', 'Other: International', 'Other'],
           'Other':     ['USD', 'Other', 'Other: International'],
         };
@@ -151,6 +158,7 @@ export default function AllocationDetail() {
       if (typeof rawPrice === 'object' && rawPrice?.currency) {
         resolvedCurr = rawPrice.currency;
       }
+      if (!resolvedCurr) resolvedCurr = 'USD';
       const price = typeof rawPrice === 'object' && rawPrice?.amount != null ? rawPrice.amount : (rawPrice != null ? Number(rawPrice) : null);
       if (price != null && !isNaN(price)) {
         const bags = parseInt(reqForm.quantity_bags) || 0;
@@ -324,7 +332,9 @@ export default function AllocationDetail() {
     }
 
     let cost = r.cost != null && r.cost !== '' ? parseFloat(r.cost) : null;
-    let currency = r.currency || null;
+    // Don't trust r.currency from DB — it defaults to 'USD' for all old rows.
+    // Always re-derive currency from planned_price_json when possible.
+    let currency = null;
 
     const a = data?.allocation;
     if (a?.planned_price_json) {
@@ -337,21 +347,29 @@ export default function AllocationDetail() {
 
       const seg = contact?.market_segment || r.market_segment;
       let price = null;
-      let resolvedCurr = seg === 'Laos' ? 'LAK' : (seg === 'Thailand' ? 'THB' : 'USD');
+      // Default currency by segment (before we find a key in the price map)
+      let resolvedCurr = seg === 'Laos' ? 'LAK'
+        : seg === 'Thailand' ? 'THB'
+        : seg === 'Singapore' ? 'SGD'
+        : seg === 'Malaysia' ? 'MYR'
+        : null; // will fall back to key-based detection below
 
       if (seg && priceMap[seg] != null) {
+        // e.g. { "Laos": 280000 } or { "Laos": { amount: 280000, currency: "LAK" } }
         const val = priceMap[seg];
         if (typeof val === 'object' && val.amount != null) {
           price = val.amount;
           if (val.currency) resolvedCurr = val.currency;
         } else {
           price = Number(val);
+          // key is a segment name like "Laos" — keep resolvedCurr from above
         }
       } else if (seg) {
+        // Try currency-code keys that match the segment
         const aliases = {
-          'Singapore': ['SGD', 'Singapore', 'Other: International', 'Other', 'USD'],
+          'Laos':      ['LAK', 'Laos'],
           'Thailand':  ['THB', 'Thailand'],
-          'Laos':      ['LAK', 'THB', 'Laos'],
+          'Singapore': ['SGD', 'Singapore', 'Other: International', 'Other', 'USD'],
           'Malaysia':  ['MYR', 'Malaysia', 'SGD', 'Other: International', 'Other', 'USD'],
           'Other':     ['USD', 'Other', 'Other: International'],
         };
@@ -370,6 +388,7 @@ export default function AllocationDetail() {
         }
       }
 
+      // Last resort: use the only key in the price map
       if (price == null && Object.keys(priceMap).length > 0) {
         const firstKey = Object.keys(priceMap)[0];
         const val = priceMap[firstKey];
@@ -382,7 +401,8 @@ export default function AllocationDetail() {
         }
       }
 
-      if (!currency) currency = resolvedCurr;
+      // Always use the resolved currency when we have pricing data
+      if (resolvedCurr) currency = resolvedCurr;
 
       if (cost == null && price != null && !isNaN(price) && r.quantity_bags) {
         const disc = discount_rate != null ? discount_rate : 0;
@@ -390,7 +410,8 @@ export default function AllocationDetail() {
       }
     }
 
-    if (!currency) currency = 'USD';
+    // Fall back to stored currency only if we had no pricing data at all
+    if (!currency) currency = r.currency || 'USD';
 
     return {
       ...r,
@@ -1080,7 +1101,6 @@ export default function AllocationDetail() {
                               }}
                               title="Change status"
                             >
-                              <option value="pending" className="bg-white text-coffee-800">Pending</option>
                               <option value="confirmed" className="bg-white text-coffee-800">Confirmed</option>
                               <option value="fulfilled" className="bg-white text-coffee-800">Fulfilled</option>
                             </select>
