@@ -187,6 +187,7 @@ export default function AllocationDetail() {
   // Archive
   const [archiving,   setArchiving]   = useState(false);
   const [archiveError, setArchiveError] = useState('');
+  const [reopening,    setReopening]    = useState(false);
 
   const [journalDocs,       setJournalDocs]       = useState(null);
   const [journalLoading,    setJournalLoading]    = useState(false);
@@ -584,6 +585,21 @@ export default function AllocationDetail() {
     }
   }
 
+  async function reopenAllocation() {
+    if (!window.confirm('Are you sure you want to reopen this closed allocation? This will set its status back to "Open for Requests".')) return;
+    setReopening(true); setArchiveError('');
+    try {
+      const res = await api.put(`/allocations/${id}/reopen`, {});
+      const d   = await res.json().catch(() => ({}));
+      if (res.ok) { load(); }
+      else { setArchiveError(d.error || 'Failed to reopen allocation.'); }
+    } catch {
+      setArchiveError('Network error — please try again.');
+    } finally {
+      setReopening(false);
+    }
+  }
+
   if (loading) return <Layout><div className="px-6 py-6 text-sm text-coffee-400">Loading…</div></Layout>;
   if (!data)   return <Layout><div className="px-6 py-6 text-sm" style={{ color: '#A32D2D' }}>Allocation not found.</div></Layout>;
 
@@ -688,8 +704,16 @@ export default function AllocationDetail() {
                 Move to: {NEXT_LABELS[a.state]}
               </Button>
             )}
-            {archiveError && <p className="text-xs" style={{ color: '#A32D2D' }}>{archiveError}</p>}
-          {isClosed && !isArchived && <p className="text-xs text-coffee-400">This allocation is closed.</p>}
+          {isClosed && !isArchived && (
+            <div className="flex items-center gap-3">
+              <p className="text-xs text-coffee-400">This allocation is closed.</p>
+              {isAdmin && (
+                <Button onClick={reopenAllocation} disabled={reopening} size="sm">
+                  {reopening ? 'Reopening…' : 'Reopen'}
+                </Button>
+              )}
+            </div>
+          )}
           {isArchived && (
             <span
               className="text-xs px-2 py-0.5 rounded-full"
@@ -699,6 +723,7 @@ export default function AllocationDetail() {
             </span>
           )}
           </div>
+          {archiveError && <p className="text-xs mt-2" style={{ color: '#A32D2D' }}>{archiveError}</p>}
         </div>
 
         {/* Source lots */}

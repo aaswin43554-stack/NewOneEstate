@@ -594,6 +594,46 @@ router.put('/:id/transition', requireRole('admin', 'roaster'), async (req, res) 
   }
 });
 
+// PUT /api/allocations/:id/reopen
+router.put('/:id/reopen', requireRole('admin', 'roaster'), async (req, res) => {
+  const tenant_id = req.user.tenant_id;
+  const alloc = await fetchAllocation(req.params.id, tenant_id);
+  if (!alloc) return res.status(404).json({ error: 'Allocation not found.' });
+
+  if (alloc.state !== 'allocation_closed') {
+    return res.status(400).json({ error: 'Only closed allocations can be reopened.' });
+  }
+
+  const { notes } = req.body;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Update state to 'open_for_requests'
+    const { rows: [updated] } = await client.query(
+      `UPDATE oec_allocations SET state = 'open_for_requests', updated_at = NOW(), updated_by = $1 WHERE id = $2 RETURNING *`,
+      [req.user.id, alloc.id]
+    );
+
+    // Insert state log
+    await client.query(
+      `INSERT INTO oec_allocation_state_log
+         (allocation_id, from_state, to_state, transitioned_by, notes)
+       VALUES ($1, 'allocation_closed', 'open_for_requests', $2, $3)`,
+      [alloc.id, req.user.id, notes || 'Reopened allocation']
+    );
+
+    await client.query('COMMIT');
+    return res.json({ allocation: updated });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Reopen allocation:', err);
+    return res.status(500).json({ error: 'Failed to reopen allocation.' });
+  } finally {
+    client.release();
+  }
+});
+
 // PUT /api/allocations/:id/archive
 router.put('/:id/archive', requireRole('admin'), async (req, res) => {
   const tenant_id = req.user.tenant_id;
