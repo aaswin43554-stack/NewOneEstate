@@ -54,6 +54,27 @@ function fmtDate(iso) {
   return new Date(iso).toLocaleString('en-GB', { timeZone: TZ, dateStyle: 'medium', timeStyle: 'short' });
 }
 
+const CURRENCY_SYMBOLS = { LAK: '₭', THB: '฿', USD: '$', SGD: 'S$', MYR: 'RM' };
+
+const CURRENCY_OPTIONS = [
+  { code: 'LAK', label: '₭ LAK (Lao Kip)' },
+  { code: 'THB', label: '฿ THB (Thai Baht)' },
+  { code: 'USD', label: '$ USD (US Dollar)' },
+  { code: 'SGD', label: 'S$ SGD (Singapore Dollar)' },
+  { code: 'MYR', label: 'RM MYR (Malaysian Ringgit)' },
+];
+
+function formatCurrencyCost(cost, currency = 'USD') {
+  if (cost == null || cost === '' || isNaN(Number(cost))) return null;
+  const curr = String(currency || 'USD').toUpperCase();
+  const sym = CURRENCY_SYMBOLS[curr] || `${curr} `;
+  const num = parseFloat(cost);
+  if (curr === 'LAK') {
+    return `${sym}${Math.round(num).toLocaleString()}`;
+  }
+  return `${sym}${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 // A DATE column comes back from the API as a TZ-shifted UTC timestamp (node-pg
 // parses it at the server's local midnight), so a naive .split('T')[0] can land a
 // day early and silently shift the date back on save. Render it in the app's
@@ -77,7 +98,7 @@ export default function AllocationDetail() {
   const [transError,       setTransError]       = useState('');
   const [reqForm, setReqForm] = useState({
     contact_id: '', quantity_bags: 1, notes: '',
-    cost: '', location: '', voucher_code: '', discount_rate: ''
+    cost: '', location: '', voucher_code: '', discount_rate: '', currency: 'USD',
   });
   const [contacts,      setContacts]      = useState([]);
   const [reqOpen,       setReqOpen]       = useState(false);
@@ -103,6 +124,7 @@ export default function AllocationDetail() {
         : a.planned_price_json;
       const seg = contact.market_segment;
       let rawPrice = null;
+      let resolvedCurr = seg === 'Laos' ? 'LAK' : (seg === 'Thailand' ? 'THB' : 'USD');
       if (seg && priceMap[seg] != null) {
         rawPrice = priceMap[seg];
       } else if (seg) {
@@ -114,11 +136,20 @@ export default function AllocationDetail() {
           'Other':     ['USD', 'Other', 'Other: International'],
         };
         for (const k of (aliases[seg] || [])) {
-          if (priceMap[k] != null) { rawPrice = priceMap[k]; break; }
+          if (priceMap[k] != null) {
+            rawPrice = priceMap[k];
+            if (['LAK', 'THB', 'USD', 'SGD', 'MYR'].includes(k)) resolvedCurr = k;
+            break;
+          }
         }
       }
       if (rawPrice == null && Object.keys(priceMap).length === 1) {
-        rawPrice = priceMap[Object.keys(priceMap)[0]];
+        const firstK = Object.keys(priceMap)[0];
+        rawPrice = priceMap[firstK];
+        if (['LAK', 'THB', 'USD', 'SGD', 'MYR'].includes(firstK)) resolvedCurr = firstK;
+      }
+      if (typeof rawPrice === 'object' && rawPrice?.currency) {
+        resolvedCurr = rawPrice.currency;
       }
       const price = typeof rawPrice === 'object' && rawPrice?.amount != null ? rawPrice.amount : (rawPrice != null ? Number(rawPrice) : null);
       if (price != null && !isNaN(price)) {
@@ -126,7 +157,9 @@ export default function AllocationDetail() {
         const discount = parseFloat(reqForm.discount_rate) || 0;
         const total = price * bags;
         const finalCost = total * (1 - discount / 100);
-        setReqForm(p => ({ ...p, cost: finalCost.toFixed(2) }));
+        setReqForm(p => ({ ...p, currency: resolvedCurr, cost: finalCost.toFixed(2) }));
+      } else {
+        setReqForm(p => ({ ...p, currency: resolvedCurr }));
       }
     }
   }, [reqForm.contact_id, reqForm.quantity_bags, reqForm.discount_rate, contacts, data]);
@@ -232,6 +265,7 @@ export default function AllocationDetail() {
         quantity_bags: bags,
         notes:         reqForm.notes || undefined,
         cost:          reqForm.cost || undefined,
+        currency:      reqForm.currency || 'USD',
         location:      reqForm.location || undefined,
         voucher_code:  reqForm.voucher_code || undefined,
         discount_rate: reqForm.discount_rate || undefined,
@@ -241,7 +275,7 @@ export default function AllocationDetail() {
         setReqOpen(false);
         setReqForm({
           contact_id: '', quantity_bags: 1, notes: '',
-          cost: '', location: '', voucher_code: '', discount_rate: ''
+          cost: '', location: '', voucher_code: '', discount_rate: '', currency: 'USD',
         });
         load();
       } else { setReqError(d.error || 'Failed.'); }
@@ -267,17 +301,155 @@ export default function AllocationDetail() {
     }
   }
 
+  function resolveRequest(r) {
+    const contact = contacts?.find(
+      c => (r.contact_id && c.id === r.contact_id) ||
+           (c.name && r.contact_name && c.name.toLowerCase().trim() === r.contact_name.toLowerCase().trim())
+    );
+
+    const location = r.location || r.contact_location || contact?.location || null;
+
+    let voucher_code = r.voucher_code || null;
+    if (!voucher_code) {
+      const combined = [r.notes, contact?.personal_notes].filter(Boolean).join(' ');
+      const m = combined.match(/(?:voucher(?:[\s_]?code)?|code)[:\s]+([A-Za-z0-9_-]+)/i);
+      if (m && m[1]) voucher_code = m[1].trim();
+    }
+
+    let discount_rate = r.discount_rate != null && r.discount_rate !== '' ? parseFloat(r.discount_rate) : null;
+    if (discount_rate == null) {
+      const combined = [r.notes, contact?.personal_notes].filter(Boolean).join(' ');
+      const m = combined.match(/(?:discount(?:[\s_]?rate)?[:\s]+)?(\d+(?:\.\d+)?)\s*%\s*(?:discount|off)?/i);
+      if (m && m[1]) discount_rate = parseFloat(m[1]);
+    }
+
+    let cost = r.cost != null && r.cost !== '' ? parseFloat(r.cost) : null;
+    let currency = r.currency || null;
+
+    const a = data?.allocation;
+    if (a?.planned_price_json) {
+      let priceMap = {};
+      try {
+        priceMap = typeof a.planned_price_json === 'string'
+          ? JSON.parse(a.planned_price_json)
+          : a.planned_price_json;
+      } catch { priceMap = {}; }
+
+      const seg = contact?.market_segment || r.market_segment;
+      let price = null;
+      let resolvedCurr = seg === 'Laos' ? 'LAK' : (seg === 'Thailand' ? 'THB' : 'USD');
+
+      if (seg && priceMap[seg] != null) {
+        const val = priceMap[seg];
+        if (typeof val === 'object' && val.amount != null) {
+          price = val.amount;
+          if (val.currency) resolvedCurr = val.currency;
+        } else {
+          price = Number(val);
+        }
+      } else if (seg) {
+        const aliases = {
+          'Singapore': ['SGD', 'Singapore', 'Other: International', 'Other', 'USD'],
+          'Thailand':  ['THB', 'Thailand'],
+          'Laos':      ['LAK', 'THB', 'Laos'],
+          'Malaysia':  ['MYR', 'Malaysia', 'SGD', 'Other: International', 'Other', 'USD'],
+          'Other':     ['USD', 'Other', 'Other: International'],
+        };
+        for (const k of (aliases[seg] || [])) {
+          if (priceMap[k] != null) {
+            const val = priceMap[k];
+            if (['LAK', 'THB', 'USD', 'SGD', 'MYR'].includes(k)) resolvedCurr = k;
+            if (typeof val === 'object' && val.amount != null) {
+              price = val.amount;
+              if (val.currency) resolvedCurr = val.currency;
+            } else {
+              price = Number(val);
+            }
+            break;
+          }
+        }
+      }
+
+      if (price == null && Object.keys(priceMap).length > 0) {
+        const firstKey = Object.keys(priceMap)[0];
+        const val = priceMap[firstKey];
+        if (['LAK', 'THB', 'USD', 'SGD', 'MYR'].includes(firstKey)) resolvedCurr = firstKey;
+        if (typeof val === 'object' && val.amount != null) {
+          price = val.amount;
+          if (val.currency) resolvedCurr = val.currency;
+        } else {
+          price = Number(val);
+        }
+      }
+
+      if (!currency) currency = resolvedCurr;
+
+      if (cost == null && price != null && !isNaN(price) && r.quantity_bags) {
+        const disc = discount_rate != null ? discount_rate : 0;
+        cost = Number((r.quantity_bags * price * (1 - disc / 100)).toFixed(2));
+      }
+    }
+
+    if (!currency) currency = 'USD';
+
+    return {
+      ...r,
+      contact_id: contact?.id || r.contact_id,
+      location,
+      voucher_code,
+      discount_rate,
+      currency,
+      cost,
+    };
+  }
+
+  function handleEditFieldChange(field, val) {
+    setEditingReq(prev => {
+      const updated = { ...prev, [field]: val };
+      if (field === 'quantity_bags' || field === 'discount_rate' || field === 'currency') {
+        const a = data?.allocation;
+        const contact = contacts?.find(
+          c => (updated.contact_id && c.id === updated.contact_id) ||
+               (c.name && updated.contact_name && c.name.toLowerCase().trim() === updated.contact_name.toLowerCase().trim())
+        );
+        const seg = contact?.market_segment;
+        let priceMap = {};
+        try {
+          priceMap = typeof a?.planned_price_json === 'string'
+            ? JSON.parse(a.planned_price_json)
+            : (a?.planned_price_json || {});
+        } catch { priceMap = {}; }
+        let price = null;
+        if (seg && priceMap[seg] != null) {
+          const p = priceMap[seg];
+          price = typeof p === 'object' && p.amount != null ? p.amount : Number(p);
+        } else if (Object.keys(priceMap).length > 0) {
+          const first = priceMap[Object.keys(priceMap)[0]];
+          price = typeof first === 'object' && first.amount != null ? first.amount : Number(first);
+        }
+        if (price != null && !isNaN(price)) {
+          const bags = parseInt(updated.quantity_bags) || 0;
+          const disc = parseFloat(updated.discount_rate) || 0;
+          updated.cost = (bags * price * (1 - disc / 100)).toFixed(2);
+        }
+      }
+      return updated;
+    });
+  }
+
   async function saveReqEdit(reqId) {
     setEditReqSaving(true);
     const bags = parseInt(editingReq.quantity_bags);
     if (!bags || bags < 1) { setRowErrors(p => ({ ...p, [reqId]: 'Enter at least 1 bag.' })); setEditReqSaving(false); return; }
     try {
       const res = await api.put(`/allocations/${id}/requests/${reqId}`, {
+        status: editingReq.status,
         quantity_bags: bags,
         channel: editingReq.channel,
         location: editingReq.location,
         voucher_code: editingReq.voucher_code,
         discount_rate: editingReq.discount_rate === '' || editingReq.discount_rate === null ? null : parseFloat(editingReq.discount_rate),
+        currency: editingReq.currency || 'USD',
         cost: editingReq.cost === '' || editingReq.cost === null ? null : parseFloat(editingReq.cost),
       });
       const d = await res.json().catch(() => ({}));
@@ -649,15 +821,29 @@ export default function AllocationDetail() {
                         className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg"
                       />
                     </div>
-                    <div>
-                      <label className="block text-xs text-coffee-500 mb-1">Cost ($)</label>
-                      <input
-                        type="number" min={0} step="0.01"
-                        value={reqForm.cost}
-                        placeholder="0.00"
-                        onChange={e => setReqForm(p => ({ ...p, cost: e.target.value }))}
-                        className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg"
-                      />
+                    <div className="grid grid-cols-[110px_1fr] gap-2">
+                      <div>
+                        <label className="block text-xs text-coffee-500 mb-1">Currency</label>
+                        <select
+                          value={reqForm.currency || 'USD'}
+                          onChange={e => setReqForm(p => ({ ...p, currency: e.target.value }))}
+                          className="w-full h-9 px-2 text-xs border border-coffee-200 rounded-lg bg-white"
+                        >
+                          {CURRENCY_OPTIONS.map(c => (
+                            <option key={c.code} value={c.code}>{c.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-coffee-500 mb-1">Cost</label>
+                        <input
+                          type="number" min={0} step="any"
+                          value={reqForm.cost}
+                          placeholder="0.00"
+                          onChange={e => setReqForm(p => ({ ...p, cost: e.target.value }))}
+                          className="w-full h-9 px-3 text-sm border border-coffee-200 rounded-lg"
+                        />
+                      </div>
                     </div>
                   </div>
                   {reqError && <p className="text-xs" style={{ color: '#A32D2D' }}>{reqError}</p>}
@@ -698,17 +884,21 @@ export default function AllocationDetail() {
               <div className="flex justify-end gap-2 mb-2">
                 <button
                   onClick={() => {
-                    const headers = ['Contact', 'Channel', 'Bags', 'Location', 'Voucher Code', 'Discount (%)', 'Cost ($)', 'Status'];
-                    const rows = requests.map(r => [
-                      r.contact_name,
-                      r.channel.replace('_', ' '),
-                      r.quantity_bags,
-                      r.location || r.contact_location || '',
-                      r.voucher_code || '',
-                      r.discount_rate ?? '',
-                      r.cost ?? '',
-                      r.status,
-                    ]);
+                    const headers = ['Contact', 'Channel', 'Bags', 'Location', 'Voucher Code', 'Discount (%)', 'Currency', 'Cost', 'Status'];
+                    const rows = requests.map(raw => {
+                      const r = resolveRequest(raw);
+                      return [
+                        r.contact_name,
+                        r.channel.replace('_', ' '),
+                        r.quantity_bags,
+                        r.location || '',
+                        r.voucher_code || '',
+                        r.discount_rate ?? '',
+                        r.currency || 'USD',
+                        r.cost ?? '',
+                        r.status,
+                      ];
+                    });
                     const escape = v => {
                       const s = String(v ?? '');
                       return /[,"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -730,17 +920,21 @@ export default function AllocationDetail() {
                 </button>
                 <button
                   onClick={() => {
-                    const headers = ['Contact', 'Channel', 'Bags', 'Location', 'Voucher Code', 'Discount (%)', 'Cost ($)', 'Status'];
-                    const rows = requests.map(r => [
-                      r.contact_name,
-                      r.channel.replace('_', ' '),
-                      r.quantity_bags,
-                      r.location || r.contact_location || '',
-                      r.voucher_code || '',
-                      r.discount_rate != null ? parseFloat(r.discount_rate) : '',
-                      r.cost != null ? parseFloat(r.cost) : '',
-                      r.status,
-                    ]);
+                    const headers = ['Contact', 'Channel', 'Bags', 'Location', 'Voucher Code', 'Discount (%)', 'Currency', 'Cost', 'Status'];
+                    const rows = requests.map(raw => {
+                      const r = resolveRequest(raw);
+                      return [
+                        r.contact_name,
+                        r.channel.replace('_', ' '),
+                        r.quantity_bags,
+                        r.location || '',
+                        r.voucher_code || '',
+                        r.discount_rate != null ? parseFloat(r.discount_rate) : '',
+                        r.currency || 'USD',
+                        r.cost != null ? parseFloat(r.cost) : '',
+                        r.status,
+                      ];
+                    });
                     downloadXlsx(headers, rows, `requests-${a.allocation_code}-${new Date().toISOString().split('T')[0]}`);
                   }}
                   className="text-xs px-3 py-1.5 rounded-lg border border-coffee-300 text-coffee-600 hover:bg-coffee-50 transition-colors flex items-center gap-1"
@@ -759,13 +953,14 @@ export default function AllocationDetail() {
                     <th className="text-left py-2 pl-3 text-coffee-400 uppercase tracking-wide">Location</th>
                     <th className="text-left py-2 pl-3 text-coffee-400 uppercase tracking-wide">Voucher</th>
                     <th className="text-right py-2 text-coffee-400 uppercase tracking-wide">Disc %</th>
-                    <th className="text-right py-2 text-coffee-400 uppercase tracking-wide">Cost ($)</th>
+                    <th className="text-right py-2 text-coffee-400 uppercase tracking-wide">Cost</th>
                     <th className="text-left py-2 pl-3 text-coffee-400 uppercase tracking-wide">Status</th>
                     {isAdmin && !isClosed && <th />}
                   </tr>
                 </thead>
                 <tbody>
-                  {requests.map(r => {
+                  {requests.map(rawReq => {
+                    const r = resolveRequest(rawReq);
                     const reqMeta = REQUEST_STATUS_MAP[r.status] || { cls: 'badge-draft', label: r.status };
                     const isEditing = canEditRequest && !isClosed && editingReq?.id === r.id;
                     return (
@@ -781,7 +976,7 @@ export default function AllocationDetail() {
                             <input
                               type="number" min={1}
                               value={editingReq.quantity_bags}
-                              onChange={e => setEditingReq(p => ({ ...p, quantity_bags: e.target.value }))}
+                              onChange={e => handleEditFieldChange('quantity_bags', e.target.value)}
                               className="w-16 h-7 px-2 text-sm text-right border border-coffee-400 rounded-lg"
                               autoFocus
                             />
@@ -793,7 +988,7 @@ export default function AllocationDetail() {
                           {isEditing ? (
                             <input
                               value={editingReq.location || ''}
-                              onChange={e => setEditingReq(p => ({ ...p, location: e.target.value }))}
+                              onChange={e => handleEditFieldChange('location', e.target.value)}
                               placeholder="Location"
                               className="w-24 h-7 px-2 text-xs border border-coffee-400 rounded-lg"
                             />
@@ -805,7 +1000,7 @@ export default function AllocationDetail() {
                           {isEditing ? (
                             <input
                               value={editingReq.voucher_code || ''}
-                              onChange={e => setEditingReq(p => ({ ...p, voucher_code: e.target.value }))}
+                              onChange={e => handleEditFieldChange('voucher_code', e.target.value)}
                               placeholder="Voucher"
                               className="w-24 h-7 px-2 text-xs border border-coffee-400 rounded-lg"
                             />
@@ -822,7 +1017,7 @@ export default function AllocationDetail() {
                             <input
                               type="number" min={0} max={100} step="0.01"
                               value={editingReq.discount_rate ?? ''}
-                              onChange={e => setEditingReq(p => ({ ...p, discount_rate: e.target.value }))}
+                              onChange={e => handleEditFieldChange('discount_rate', e.target.value)}
                               placeholder="0"
                               className="w-16 h-7 px-2 text-xs text-right border border-coffee-400 rounded-lg"
                             />
@@ -834,23 +1029,66 @@ export default function AllocationDetail() {
                         </td>
                         <td className="py-2 text-right text-coffee-700" style={{ fontWeight: 500 }}>
                           {isEditing ? (
-                            <input
-                              type="number" min={0} step="0.01"
-                              value={editingReq.cost ?? ''}
-                              onChange={e => setEditingReq(p => ({ ...p, cost: e.target.value }))}
-                              placeholder="0.00"
-                              className="w-20 h-7 px-2 text-xs text-right border border-coffee-400 rounded-lg"
-                            />
+                            <div className="flex items-center justify-end gap-1">
+                              <select
+                                value={editingReq.currency || 'USD'}
+                                onChange={e => handleEditFieldChange('currency', e.target.value)}
+                                className="h-7 px-1 text-xs border border-coffee-400 rounded-lg bg-white"
+                              >
+                                <option value="LAK">₭ LAK</option>
+                                <option value="THB">฿ THB</option>
+                                <option value="USD">$ USD</option>
+                                <option value="SGD">S$ SGD</option>
+                                <option value="MYR">RM MYR</option>
+                              </select>
+                              <input
+                                type="number" min={0} step="any"
+                                value={editingReq.cost ?? ''}
+                                onChange={e => handleEditFieldChange('cost', e.target.value)}
+                                placeholder="0.00"
+                                className="w-20 h-7 px-2 text-xs text-right border border-coffee-400 rounded-lg"
+                              />
+                            </div>
                           ) : (
                             r.cost != null
-                              ? `$${parseFloat(r.cost).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                              ? formatCurrencyCost(r.cost, r.currency)
                               : <span className="text-coffee-300">—</span>
                           )}
                         </td>
                         <td className="py-2 pl-3">
-                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full capitalize ${reqMeta.cls}`}>
-                            {reqMeta.label}
-                          </span>
+                          {isAdmin && !isClosed ? (
+                            <select
+                              value={isEditing ? (editingReq.status || r.status) : r.status}
+                              disabled={!!rowActioning[r.id]}
+                              onChange={e => {
+                                if (isEditing) {
+                                  handleEditFieldChange('status', e.target.value);
+                                } else {
+                                  updateReqStatus(r.id, e.target.value);
+                                }
+                              }}
+                              className={`inline-flex items-center text-xs px-2 py-0.5 rounded-full capitalize font-medium cursor-pointer outline-none border transition-colors ${
+                                (REQUEST_STATUS_MAP[isEditing ? (editingReq.status || r.status) : r.status] || reqMeta).cls
+                              }`}
+                              style={{
+                                appearance: 'none',
+                                WebkitAppearance: 'none',
+                                paddingRight: '1.25rem',
+                                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%238B6A47' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
+                                backgroundRepeat: 'no-repeat',
+                                backgroundPosition: 'right 0.35rem center',
+                              }}
+                              title="Change status"
+                            >
+                              <option value="pending" className="bg-white text-coffee-800">Pending</option>
+                              <option value="confirmed" className="bg-white text-coffee-800">Confirmed</option>
+                              <option value="fulfilled" className="bg-white text-coffee-800">Fulfilled</option>
+                            </select>
+                          ) : (
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full capitalize ${reqMeta.cls}`}>
+                              {reqMeta.label}
+                            </span>
+                          )}
                           {rowErrors[r.id] && (
                             <p className="text-xs mt-0.5" style={{ color: '#A32D2D' }}>{rowErrors[r.id]}</p>
                           )}
@@ -868,7 +1106,7 @@ export default function AllocationDetail() {
                               ) : (
                                 <>
                                   {canEditRequest && (
-                                    <button onClick={() => setEditingReq({ id: r.id, quantity_bags: r.quantity_bags, channel: r.channel, location: r.location || r.contact_location || '', voucher_code: r.voucher_code || '', discount_rate: r.discount_rate ?? '', cost: r.cost ?? '' })} className="text-xs text-coffee-400 hover:text-coffee-700 transition-colors">
+                                    <button onClick={() => setEditingReq({ id: r.id, status: r.status, contact_id: r.contact_id, contact_name: r.contact_name, quantity_bags: r.quantity_bags, channel: r.channel, location: r.location || '', voucher_code: r.voucher_code || '', discount_rate: r.discount_rate ?? '', currency: r.currency || 'USD', cost: r.cost ?? '' })} className="text-xs text-coffee-400 hover:text-coffee-700 transition-colors">
                                       Edit
                                     </button>
                                   )}

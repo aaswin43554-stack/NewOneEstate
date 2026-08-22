@@ -5,13 +5,23 @@ import { api } from '../../lib/api';
 const CHANNELS = ['WhatsApp', 'Instagram', 'Website', 'In_Person', 'Other'];
 const CHANNEL_LABELS = { In_Person: 'In Person' };
 
+const CURRENCY_OPTIONS = [
+  { code: 'LAK', label: '₭ LAK (Lao Kip)' },
+  { code: 'THB', label: '฿ THB (Thai Baht)' },
+  { code: 'USD', label: '$ USD (US Dollar)' },
+  { code: 'SGD', label: 'S$ SGD (Singapore Dollar)' },
+  { code: 'MYR', label: 'RM MYR (Malaysian Ringgit)' },
+];
+
+const CURRENCY_SYMBOLS = { LAK: '₭', THB: '฿', USD: '$', SGD: 'S$', MYR: 'RM' };
+
 export default function AllocationAddRequest() {
   const { id } = useParams();
   const navigate = useNavigate();
 
   const [form, setForm] = useState({
     contact_name: '', contact_method: '', channel: '', quantity_bags: 1, notes: '',
-    cost: '', location: '', voucher_code: '', discount_rate: '',
+    cost: '', location: '', voucher_code: '', discount_rate: '', currency: 'USD',
   });
   const [saving,   setSaving]   = useState(false);
   const [error,    setError]    = useState('');
@@ -25,8 +35,15 @@ export default function AllocationAddRequest() {
   const [selectedContact, setSelectedContact] = useState(null);
 
   useEffect(() => {
-    api.get('/contacts').then(r => r.json()).then(d => setContacts(d.contacts || [])).catch(() => {});
-    api.get(`/allocations/${id}`).then(r => r.json()).then(d => setAllocation(d.allocation || null)).catch(() => {});
+    Promise.all([
+      api.get(`/allocations/${id}`).then(r => r.json()),
+      api.get('/contacts').then(r => r.json()),
+    ]).then(([allocData, contactsData]) => {
+      setAllocation(allocData.allocation);
+      setContacts(contactsData.contacts || []);
+    }).catch(() => {
+      setError('Failed to load allocation data.');
+    });
   }, [id]);
 
   const suggestions = useMemo(() => {
@@ -35,22 +52,22 @@ export default function AllocationAddRequest() {
     return contacts.filter(c => c.name.toLowerCase().includes(q)).slice(0, 6);
   }, [contacts, contactSearch]);
 
-  function selectContact(contact) {
-    setSelectedContact(contact);
+  function selectContact(c) {
+    setSelectedContact(c);
+    setContactSearch(c.name);
     setForm(p => ({
       ...p,
-      contact_name:   contact.name,
-      contact_method: contact.primary_contact_method || p.contact_method,
-      location:       contact.location || p.location,
+      contact_name: c.name,
+      contact_method: c.primary_contact_method || p.contact_method,
+      channel: c.preferred_channel || p.channel,
+      location: c.location || p.location,
     }));
-    setContactSearch(contact.name);
-    setShowSuggestions(false);
   }
 
   function clearContact() {
     setSelectedContact(null);
     setContactSearch('');
-    setForm(p => ({ ...p, contact_name: '', contact_method: '', location: '', cost: '' }));
+    setForm(p => ({ ...p, contact_name: '', contact_method: '', location: '', cost: '', currency: 'USD' }));
   }
 
   // Look up price per bag for the selected contact's market segment
@@ -62,9 +79,16 @@ export default function AllocationAddRequest() {
     const seg = selectedContact.market_segment;
     
     let price = null;
+    let resolvedCurr = seg === 'Laos' ? 'LAK' : (seg === 'Thailand' ? 'THB' : 'USD');
+
     if (seg && priceMap[seg] != null) {
       const val = priceMap[seg];
-      price = typeof val === 'object' && val.amount != null ? val.amount : Number(val);
+      if (typeof val === 'object' && val.amount != null) {
+        price = val.amount;
+        if (val.currency) resolvedCurr = val.currency;
+      } else {
+        price = Number(val);
+      }
     } else if (seg) {
       const aliases = {
         'Singapore': ['SGD', 'Singapore', 'Other: International', 'Other'],
@@ -77,18 +101,31 @@ export default function AllocationAddRequest() {
       for (const k of candKeys) {
         if (priceMap[k] != null) {
           const val = priceMap[k];
-          price = typeof val === 'object' && val.amount != null ? val.amount : Number(val);
+          if (['LAK', 'THB', 'USD', 'SGD', 'MYR'].includes(k)) resolvedCurr = k;
+          if (typeof val === 'object' && val.amount != null) {
+            price = val.amount;
+            if (val.currency) resolvedCurr = val.currency;
+          } else {
+            price = Number(val);
+          }
           break;
         }
       }
     }
     
     if (price == null && Object.keys(priceMap).length === 1) {
-      const val = priceMap[Object.keys(priceMap)[0]];
-      price = typeof val === 'object' && val.amount != null ? val.amount : Number(val);
+      const firstK = Object.keys(priceMap)[0];
+      const val = priceMap[firstK];
+      if (['LAK', 'THB', 'USD', 'SGD', 'MYR'].includes(firstK)) resolvedCurr = firstK;
+      if (typeof val === 'object' && val.amount != null) {
+        price = val.amount;
+        if (val.currency) resolvedCurr = val.currency;
+      } else {
+        price = Number(val);
+      }
     }
 
-    return price != null && !isNaN(price) ? { segment: seg || 'Standard', price } : null;
+    return price != null && !isNaN(price) ? { segment: seg || 'Standard', price, currency: resolvedCurr } : null;
   }, [selectedContact, allocation]);
 
   // Auto-fill location & cost when selecting contact or changing bags/discount
@@ -105,7 +142,7 @@ export default function AllocationAddRequest() {
       const discount = parseFloat(form.discount_rate) || 0;
       const total = price * bags;
       const finalCost = total * (1 - discount / 100);
-      setForm(p => ({ ...p, cost: finalCost.toFixed(2) }));
+      setForm(p => ({ ...p, currency: priceForContact.currency || p.currency, cost: finalCost.toFixed(2) }));
     }
   }, [priceForContact, form.quantity_bags, form.discount_rate]);
 
@@ -132,7 +169,7 @@ export default function AllocationAddRequest() {
   function reset() {
     setForm({
       contact_name:'', contact_method:'', channel:'', quantity_bags:1, notes:'',
-      cost:'', location:'', voucher_code:'', discount_rate:''
+      cost:'', location:'', voucher_code:'', discount_rate:'', currency:'USD'
     });
     setSuccess(null);
     setError('');
@@ -280,7 +317,10 @@ export default function AllocationAddRequest() {
           </div>
           {priceForContact && (
             <p className="mt-2 text-sm text-coffee-500">
-              Total: <strong className="text-coffee-800">${(priceForContact.price * form.quantity_bags).toLocaleString()}</strong>
+              Total: <strong className="text-coffee-800">
+                {(CURRENCY_SYMBOLS[priceForContact.currency || form.currency] || '$')}
+                {(priceForContact.price * form.quantity_bags).toLocaleString()}
+              </strong>
             </p>
           )}
         </div>
@@ -312,13 +352,26 @@ export default function AllocationAddRequest() {
             className="w-full text-lg border-2 border-coffee-300 rounded-xl px-4 py-4 focus:border-coffee-600 outline-none" />
         </div>
 
-        {/* Cost */}
+        {/* Cost & Currency */}
         <div>
-          <label className="block text-base font-semibold text-coffee-800 mb-2">Cost ($)</label>
-          <input type="number" min={0} step="0.01" value={form.cost}
-            onChange={e => set('cost', e.target.value)}
-            placeholder="0.00"
-            className="w-full text-lg border-2 border-coffee-300 rounded-xl px-4 py-4 focus:border-coffee-600 outline-none" />
+          <label className="block text-base font-semibold text-coffee-800 mb-2">Cost & Currency</label>
+          <div className="grid grid-cols-[140px_1fr] gap-3">
+            <select
+              value={form.currency || 'USD'}
+              onChange={e => set('currency', e.target.value)}
+              className="w-full text-base font-medium border-2 border-coffee-300 rounded-xl px-3 py-4 focus:border-coffee-600 outline-none bg-white"
+            >
+              {CURRENCY_OPTIONS.map(c => (
+                <option key={c.code} value={c.code}>{c.label}</option>
+              ))}
+            </select>
+            <input
+              type="number" min={0} step="any" value={form.cost}
+              onChange={e => set('cost', e.target.value)}
+              placeholder="0.00"
+              className="w-full text-lg border-2 border-coffee-300 rounded-xl px-4 py-4 focus:border-coffee-600 outline-none"
+            />
+          </div>
         </div>
 
         {error && <p className="text-red-600 text-sm">{error}</p>}

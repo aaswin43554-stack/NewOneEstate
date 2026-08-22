@@ -31,48 +31,82 @@ function normalizeChannel(raw) {
   return ALLOWED_CHANNELS.find(c => c.toLowerCase().replace(/[\s_]+/g, '') === key) || null;
 }
 
-// Safely resolve price per bag from planned_price_json for a given market segment or currency
-function getPriceForSegment(segment, pMap) {
-  if (!pMap || typeof pMap !== 'object') return null;
-  if (typeof pMap === 'number') return pMap;
+// Safely resolve price per bag and currency from planned_price_json for a given market segment or currency
+function getPriceAndCurrencyForSegment(segment, pMap) {
+  const SEGMENT_DEFAULT_CURRENCY = {
+    'Laos': 'LAK',
+    'Thailand': 'THB',
+    'Singapore': 'SGD',
+    'Malaysia': 'MYR',
+    'Other': 'USD',
+    'Other: International': 'USD',
+  };
+
+  if (!pMap || typeof pMap !== 'object') return { price: null, currency: (segment && SEGMENT_DEFAULT_CURRENCY[segment]) || 'USD' };
+  if (typeof pMap === 'number') return { price: pMap, currency: (segment && SEGMENT_DEFAULT_CURRENCY[segment]) || 'USD' };
 
   // Direct match by segment name
   if (segment && pMap[segment] != null) {
     const val = pMap[segment];
-    if (typeof val === 'number') return val;
-    if (typeof val === 'object' && val.amount != null) return Number(val.amount);
-    if (!isNaN(Number(val))) return Number(val);
+    if (typeof val === 'object' && val.amount != null) {
+      return { price: Number(val.amount), currency: val.currency || SEGMENT_DEFAULT_CURRENCY[segment] || 'USD' };
+    }
+    const num = typeof val === 'number' ? val : Number(val);
+    if (!isNaN(num)) return { price: num, currency: SEGMENT_DEFAULT_CURRENCY[segment] || 'USD' };
   }
 
   // Segment to currency / region aliases
   const aliases = {
-    'Singapore': ['SGD', 'Singapore', 'Other: International', 'Other'],
+    'Singapore': ['SGD', 'Singapore', 'Other: International', 'Other', 'USD'],
     'Thailand':  ['THB', 'Thailand'],
     'Laos':      ['LAK', 'THB', 'Laos'],
-    'Malaysia':  ['MYR', 'Malaysia', 'SGD', 'Other: International', 'Other'],
+    'Malaysia':  ['MYR', 'Malaysia', 'SGD', 'Other: International', 'Other', 'USD'],
     'Other':     ['USD', 'Other', 'Other: International'],
+    'Other: International': ['USD', 'Other', 'Other: International'],
   };
 
   const candKeys = (segment && aliases[segment]) || [];
   for (const k of candKeys) {
     if (pMap[k] != null) {
       const val = pMap[k];
-      if (typeof val === 'number') return val;
-      if (typeof val === 'object' && val.amount != null) return Number(val.amount);
-      if (!isNaN(Number(val))) return Number(val);
+      let curr = SEGMENT_DEFAULT_CURRENCY[segment] || 'USD';
+      if (['LAK', 'THB', 'USD', 'SGD', 'MYR'].includes(k)) curr = k;
+      if (typeof val === 'object' && val.amount != null) {
+        return { price: Number(val.amount), currency: val.currency || curr };
+      }
+      const num = typeof val === 'number' ? val : Number(val);
+      if (!isNaN(num)) return { price: num, currency: curr };
     }
+  }
+
+  // Direct currency keys fallback
+  if (pMap['LAK'] != null && segment === 'Laos') {
+    const val = pMap['LAK'];
+    return { price: typeof val === 'object' ? Number(val.amount) : Number(val), currency: 'LAK' };
+  }
+  if (pMap['THB'] != null && (segment === 'Thailand' || segment === 'Laos')) {
+    const val = pMap['THB'];
+    return { price: typeof val === 'object' ? Number(val.amount) : Number(val), currency: 'THB' };
   }
 
   // Single price entry fallback
   const keys = Object.keys(pMap);
   if (keys.length === 1) {
-    const val = pMap[keys[0]];
-    if (typeof val === 'number') return val;
-    if (typeof val === 'object' && val.amount != null) return Number(val.amount);
-    if (!isNaN(Number(val))) return Number(val);
+    const k = keys[0];
+    const val = pMap[k];
+    let curr = ['LAK', 'THB', 'USD', 'SGD', 'MYR'].includes(k) ? k : (SEGMENT_DEFAULT_CURRENCY[k] || 'USD');
+    if (typeof val === 'object' && val.amount != null) {
+      return { price: Number(val.amount), currency: val.currency || curr };
+    }
+    const num = typeof val === 'number' ? val : Number(val);
+    if (!isNaN(num)) return { price: num, currency: curr };
   }
 
-  return null;
+  return { price: null, currency: (segment && SEGMENT_DEFAULT_CURRENCY[segment]) || 'USD' };
+}
+
+function getPriceForSegment(segment, pMap) {
+  return getPriceAndCurrencyForSegment(segment, pMap).price;
 }
 
 // Extract voucher code or discount rate from notes only if unambiguous
@@ -635,7 +669,7 @@ router.post('/:id/requests', requireRole('admin', 'roaster'), async (req, res) =
     });
   }
 
-  let { contact_id, contact_name, contact_method, channel, quantity_bags, notes, cost, location, voucher_code, discount_rate } = req.body;
+  let { contact_id, contact_name, contact_method, channel, quantity_bags, notes, cost, location, voucher_code, discount_rate, currency } = req.body;
 
   // If contact_id not passed, match existing contact by name if available
   if (!contact_id && contact_name) {
@@ -659,6 +693,7 @@ router.post('/:id/requests', requireRole('admin', 'roaster'), async (req, res) =
 
   // Preferred flow: a contact is pulled from the Contacts list. Derive the
   // name / method / channel from that record so they are always consistent.
+  let contactSegment = null;
   if (contact_id) {
     const { rows: [contact] } = await pool.query(
       'SELECT * FROM oec_contacts WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
@@ -668,6 +703,7 @@ router.post('/:id/requests', requireRole('admin', 'roaster'), async (req, res) =
     contact_name   = contact.name;
     contact_method = contact.primary_contact_method || contact_method || '—';
     channel        = normalizeChannel(contact.preferred_channel) || channel || 'Other';
+    contactSegment = contact.market_segment;
     if (location === undefined || location === null || location === '') {
       location = contact.location || null;
     }
@@ -681,23 +717,20 @@ router.post('/:id/requests', requireRole('admin', 'roaster'), async (req, res) =
     return res.status(400).json({ error: 'Number of bags must be a whole number between 1 and 1,000,000.' });
   }
 
+  let priceMap = {};
+  try {
+    priceMap = typeof alloc.planned_price_json === 'string'
+      ? JSON.parse(alloc.planned_price_json)
+      : (alloc.planned_price_json || {});
+  } catch { priceMap = {}; }
+
+  const resolved = getPriceAndCurrencyForSegment(contactSegment, priceMap);
+  const effectiveCurrency = currency || resolved.currency || 'USD';
+
   // Auto-calculate cost if not explicitly provided and pricing is known
-  if ((cost === undefined || cost === null || cost === '') && contact_id) {
-    const { rows: [contactRow] } = await pool.query(
-      'SELECT market_segment FROM oec_contacts WHERE id = $1',
-      [contact_id]
-    );
-    let priceMap = {};
-    try {
-      priceMap = typeof alloc.planned_price_json === 'string'
-        ? JSON.parse(alloc.planned_price_json)
-        : (alloc.planned_price_json || {});
-    } catch { priceMap = {}; }
-    const p = getPriceForSegment(contactRow?.market_segment, priceMap);
-    if (p != null) {
-      const disc = discount_rate !== undefined && discount_rate !== '' ? Number(discount_rate) : 0;
-      cost = Number((bags * p * (1 - disc / 100)).toFixed(2));
-    }
+  if ((cost === undefined || cost === null || cost === '') && resolved.price != null) {
+    const disc = discount_rate !== undefined && discount_rate !== '' ? Number(discount_rate) : 0;
+    cost = Number((bags * resolved.price * (1 - disc / 100)).toFixed(2));
   }
 
   if (!contact_name || !contact_method || !channel) {
@@ -710,8 +743,8 @@ router.post('/:id/requests', requireRole('admin', 'roaster'), async (req, res) =
     await client.query('BEGIN');
     const { rows: [request] } = await client.query(
       `INSERT INTO oec_allocation_requests
-         (tenant_id, allocation_id, contact_name, contact_method, channel, quantity_bags, notes, cost, location, voucher_code, discount_rate, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12) RETURNING *`,
+         (tenant_id, allocation_id, contact_name, contact_method, channel, quantity_bags, notes, cost, location, voucher_code, discount_rate, currency, created_by, updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13) RETURNING *`,
       [
         tenant_id,
         alloc.id,
@@ -724,6 +757,7 @@ router.post('/:id/requests', requireRole('admin', 'roaster'), async (req, res) =
         location || null,
         voucher_code || null,
         discount_rate !== undefined && discount_rate !== '' ? Number(discount_rate) : null,
+        effectiveCurrency,
         req.user.id
       ]
     );
@@ -759,52 +793,53 @@ router.put('/:id/requests/:req_id', requireRole('admin', 'roaster'), async (req,
   );
   if (!request) return res.status(404).json({ error: 'Request not found.' });
 
-  const { status: newStatus, quantity_bags, contact_name, channel, notes, cost, location, voucher_code, discount_rate } = req.body;
+  const { status: newStatus, quantity_bags, contact_name, channel, notes, cost, location, voucher_code, discount_rate, currency } = req.body;
 
-  if (!newStatus && (quantity_bags !== undefined || contact_name !== undefined || channel !== undefined || notes !== undefined || cost !== undefined || location !== undefined || voucher_code !== undefined || discount_rate !== undefined)) {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Only admins can edit request fields.' });
-    const updates = [];
-    const params  = [];
-    if (quantity_bags !== undefined) {
-      const bags = parseInt(quantity_bags);
-      if (isNaN(bags) || bags < 1) return res.status(400).json({ error: 'quantity_bags must be at least 1.' });
-      params.push(bags); updates.push(`quantity_bags = $${params.length}`);
-    }
-    if (contact_name  !== undefined) { params.push(contact_name);            updates.push(`contact_name = $${params.length}`);  }
-    if (channel       !== undefined) { params.push(channel);                 updates.push(`channel = $${params.length}`);       }
-    if (notes         !== undefined) { params.push(notes || null);           updates.push(`notes = $${params.length}`);         }
-    if (cost          !== undefined) { params.push(cost === '' || cost === null ? null : Number(cost)); updates.push(`cost = $${params.length}`); }
-    if (location      !== undefined) { params.push(location || null);         updates.push(`location = $${params.length}`);      }
-    if (voucher_code  !== undefined) { params.push(voucher_code || null);     updates.push(`voucher_code = $${params.length}`);  }
-    if (discount_rate !== undefined) { params.push(discount_rate === '' || discount_rate === null ? null : Number(discount_rate)); updates.push(`discount_rate = $${params.length}`); }
-    params.push(req.user.id); updates.push(`updated_by = $${params.length}`, 'updated_at = NOW()');
-    params.push(request.id);
-    try {
-      const { rows: [updated] } = await pool.query(
-        `UPDATE oec_allocation_requests SET ${updates.join(', ')} WHERE id = $${params.length} RETURNING *`,
-        params
-      );
-      return res.json({ request: updated });
-    } catch (err) {
-      console.error('Edit request fields:', err);
-      return res.status(500).json({ error: 'Failed to update request.' });
-    }
+  const VALID_STATUSES = ['pending', 'confirmed', 'fulfilled'];
+  if (newStatus !== undefined && !VALID_STATUSES.includes(newStatus)) {
+    return res.status(400).json({ error: `Invalid status: '${newStatus}'. Must be one of: ${VALID_STATUSES.join(', ')}.` });
   }
 
-  const allowed = { pending: ['confirmed'], confirmed: ['fulfilled'] };
-  if (!allowed[request.status] || !allowed[request.status].includes(newStatus)) {
-    return res.status(400).json({ error: `Cannot transition from '${request.status}' to '${newStatus}'.` });
+  const hasFieldUpdates = quantity_bags !== undefined || contact_name !== undefined || channel !== undefined || notes !== undefined || cost !== undefined || location !== undefined || voucher_code !== undefined || discount_rate !== undefined || currency !== undefined;
+
+  if (hasFieldUpdates && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Only admins can edit request details.' });
   }
 
+  const updates = [];
+  const params  = [];
+  if (newStatus !== undefined) {
+    params.push(newStatus);
+    updates.push(`status = $${params.length}`);
+  }
+  if (quantity_bags !== undefined) {
+    const bags = parseInt(quantity_bags);
+    if (isNaN(bags) || bags < 1) return res.status(400).json({ error: 'quantity_bags must be at least 1.' });
+    params.push(bags); updates.push(`quantity_bags = $${params.length}`);
+  }
+  if (contact_name  !== undefined) { params.push(contact_name);            updates.push(`contact_name = $${params.length}`);  }
+  if (channel       !== undefined) { params.push(channel);                 updates.push(`channel = $${params.length}`);       }
+  if (notes         !== undefined) { params.push(notes || null);           updates.push(`notes = $${params.length}`);         }
+  if (cost          !== undefined) { params.push(cost === '' || cost === null ? null : Number(cost)); updates.push(`cost = $${params.length}`); }
+  if (location      !== undefined) { params.push(location || null);         updates.push(`location = $${params.length}`);      }
+  if (voucher_code  !== undefined) { params.push(voucher_code || null);     updates.push(`voucher_code = $${params.length}`);  }
+  if (discount_rate !== undefined) { params.push(discount_rate === '' || discount_rate === null ? null : Number(discount_rate)); updates.push(`discount_rate = $${params.length}`); }
+  if (currency      !== undefined) { params.push(currency || 'USD');       updates.push(`currency = $${params.length}`);       }
+
+  if (updates.length === 0) {
+    return res.json({ request });
+  }
+
+  params.push(req.user.id); updates.push(`updated_by = $${params.length}`, 'updated_at = NOW()');
+  params.push(request.id);
   try {
     const { rows: [updated] } = await pool.query(
-      `UPDATE oec_allocation_requests SET status = $1, updated_at = NOW(), updated_by = $2
-       WHERE id = $3 RETURNING *`,
-      [newStatus, req.user.id, request.id]
+      `UPDATE oec_allocation_requests SET ${updates.join(', ')} WHERE id = $${params.length} RETURNING *`,
+      params
     );
     return res.json({ request: updated });
   } catch (err) {
-    console.error('Update request:', err);
+    console.error('Edit request:', err);
     return res.status(500).json({ error: 'Failed to update request.' });
   }
 });
@@ -1075,13 +1110,15 @@ router.get('/:id', async (req, res) => {
     const effectiveVoucher = r.voucher_code || extracted.voucher || null;
     const effectiveDiscount = r.discount_rate != null ? Number(r.discount_rate) : (extracted.discount != null ? extracted.discount : null);
 
+    const seg = r.market_segment;
+    const resolved = getPriceAndCurrencyForSegment(seg, priceMap);
+    const effectiveCurrency = r.currency || resolved.currency || 'USD';
+
     let effectiveCost = r.cost != null ? Number(r.cost) : null;
     if (effectiveCost == null) {
-      const seg = r.market_segment;
-      const pricePerBag = getPriceForSegment(seg, priceMap);
-      if (pricePerBag != null && r.quantity_bags) {
+      if (resolved.price != null && r.quantity_bags) {
         const disc = effectiveDiscount != null ? effectiveDiscount : 0;
-        effectiveCost = Number((r.quantity_bags * pricePerBag * (1 - disc / 100)).toFixed(2));
+        effectiveCost = Number((r.quantity_bags * resolved.price * (1 - disc / 100)).toFixed(2));
       }
     }
 
@@ -1091,6 +1128,7 @@ router.get('/:id', async (req, res) => {
       contact_location: r.contact_location || null,
       voucher_code: effectiveVoucher,
       discount_rate: effectiveDiscount,
+      currency: effectiveCurrency,
       cost: effectiveCost != null ? effectiveCost : null,
     };
   });
