@@ -20,6 +20,16 @@ const { validateInts } = require('../utils/validate');
 
 const router = express.Router();
 
+// Ensure migration 037 columns exist on ops.oec_allocation_requests
+pool.query(`
+  ALTER TABLE ops.oec_allocation_requests
+    ADD COLUMN IF NOT EXISTS cost NUMERIC(14, 2),
+    ADD COLUMN IF NOT EXISTS currency VARCHAR(10) DEFAULT 'USD',
+    ADD COLUMN IF NOT EXISTS location VARCHAR(255),
+    ADD COLUMN IF NOT EXISTS voucher_code VARCHAR(50),
+    ADD COLUMN IF NOT EXISTS discount_rate NUMERIC(5, 2);
+`).catch(err => console.error('[DB] Request columns migration fallback error:', err.message));
+
 // Request channels accepted by the oec_allocation_requests CHECK constraint.
 const ALLOWED_CHANNELS = ['WhatsApp', 'Instagram', 'Website', 'In_Person', 'Other'];
 
@@ -828,7 +838,7 @@ router.put('/:id/requests/:req_id', requireRole('admin', 'roaster'), async (req,
   if (closedGuard(alloc, res)) return;
 
   const { rows: [request] } = await pool.query(
-    'SELECT * FROM oec_allocation_requests WHERE id = $1 AND allocation_id = $2',
+    'SELECT * FROM ops.oec_allocation_requests WHERE id = $1 AND allocation_id = $2',
     [req.params.req_id, alloc.id]
   );
   if (!request) return res.status(404).json({ error: 'Request not found.' });
@@ -874,13 +884,13 @@ router.put('/:id/requests/:req_id', requireRole('admin', 'roaster'), async (req,
   params.push(request.id);
   try {
     const { rows: [updated] } = await pool.query(
-      `UPDATE oec_allocation_requests SET ${updates.join(', ')} WHERE id = $${params.length} RETURNING *`,
+      `UPDATE ops.oec_allocation_requests SET ${updates.join(', ')} WHERE id = $${params.length} RETURNING *`,
       params
     );
     return res.json({ request: updated });
   } catch (err) {
     console.error('Edit request:', err);
-    return res.status(500).json({ error: 'Failed to update request.' });
+    return res.status(500).json({ error: err.message || 'Failed to update request.' });
   }
 });
 
